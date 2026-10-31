@@ -6,10 +6,10 @@ use App\Filament\Resources\TrendyolOrders\TrendyolOrderResource;
 use App\Services\TrendyolOrderSyncService;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
+use Filament\Schemas\Components\Grid;
 use Throwable;
 
 class ListTrendyolOrders extends ListRecords

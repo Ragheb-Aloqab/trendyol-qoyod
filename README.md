@@ -150,8 +150,12 @@ php artisan filament:upgrade
 # ربط مجلد التخزين العام
 php artisan storage:link
 
-# إنشاء مستخدم أدمن للوحة Filament
-php artisan make:filament-user
+# إنشاء مستخدم الأدمن تلقائياً عبر الـ Seeder
+# (البريد: hanayaline.sa@gmail.com | كلمة المرور: password)
+php artisan db:seed --force
+
+# أو إنشاء مستخدم مخصص آخر يدوياً إن أردت:
+# php artisan make:filament-user
 ```
 
 ---

@@ -12,3 +12,6 @@ Route::get('/', function () {
 // توجيه المسار العام /login إلى /admin/login لضمان توافق مسارات المصادقة
 Route::redirect('/login', '/admin/login')->name('login');
 
+// توجيه المسار العام /profile إلى /admin/profile
+Route::redirect('/profile', '/admin/profile');
+

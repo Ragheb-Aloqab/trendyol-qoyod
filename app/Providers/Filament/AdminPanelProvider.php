@@ -39,7 +39,8 @@ class AdminPanelProvider extends PanelProvider
             ->userMenuItems([
                 'profile' => \Filament\Navigation\MenuItem::make()
                     ->label('إعدادات الحساب')
-                    ->icon('heroicon-o-user-circle'),
+                    ->icon('heroicon-o-user-circle')
+                    ->url(fn (): string => \Filament\Facades\Filament::getProfileUrl()),
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')

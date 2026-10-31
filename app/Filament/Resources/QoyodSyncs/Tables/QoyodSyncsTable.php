@@ -109,26 +109,55 @@ class QoyodSyncsTable
                     ->label('عرض التفاصيل'),
 
                 Action::make('retry')
-                    ->label('إعادة المحاولة')
-                    ->icon('heroicon-o-arrow-path')
-                    ->color('warning')
-                    ->visible(fn (QoyodSync $record): bool => $record->status === QoyodSync::STATUS_FAILED || $record->status === QoyodSync::STATUS_PENDING)
+                    ->label(fn (QoyodSync $record): string => $record->status === QoyodSync::STATUS_FAILED ? 'إعادة المحاولة' : 'إرسال لقيود الآن')
+                    ->icon(fn (QoyodSync $record): string => $record->status === QoyodSync::STATUS_FAILED ? 'heroicon-o-arrow-path' : 'heroicon-o-paper-airplane')
+                    ->color(fn (QoyodSync $record): string => $record->status === QoyodSync::STATUS_FAILED ? 'warning' : 'success')
+                    ->visible(fn (QoyodSync $record): bool => $record->status !== QoyodSync::STATUS_SUCCESS)
                     ->requiresConfirmation()
-                    ->modalHeading('تأكيد إعادة المحاولة')
-                    ->modalDescription('هل ترغب في إعادة جدولة هذه المعاملة للمزامنة مجدداً؟')
-                    ->modalSubmitActionLabel('نعم، أعد المحاولة')
+                    ->modalHeading(fn (QoyodSync $record): string => $record->status === QoyodSync::STATUS_FAILED ? 'تأكيد إعادة المحاولة وإرسال الفاتورة' : 'تأكيد إرسال الفاتورة لقيود الآن')
+                    ->modalDescription('سيتم إرسال بيانات الفاتورة والأصناف والعميل إلى حسابك في قيود فوراً.')
+                    ->modalSubmitActionLabel('نعم، أرسل لقيود الآن')
                     ->modalCancelActionLabel('إلغاء')
                     ->action(function (QoyodSync $record) {
-                        $record->update(['status' => QoyodSync::STATUS_PENDING]);
+                        $qoyodService = app(\App\Services\QoyodInvoiceSyncService::class);
+                        $result = $qoyodService->syncInvoice($record);
 
-                        Notification::make()
-                            ->title('تمت إعادة جدولة العملية بنجاح')
-                            ->success()
-                            ->send();
+                        if ($result['success']) {
+                            Notification::make()
+                                ->title('تمت المزامنة مع قيود بنجاح')
+                                ->body($result['message'] ?? 'تم إرسال الفاتورة بنجاح')
+                                ->success()
+                                ->send();
+                        } else {
+                            Notification::make()
+                                ->title('فشلت المزامنة مع قيود')
+                                ->body($result['error'] ?? 'حدث خطأ أثناء إرسال الفاتورة لقيود')
+                                ->danger()
+                                ->persistent()
+                                ->send();
+                        }
                     }),
             ])
             ->toolbarActions([
-                // Read-only
+                Action::make('sync_all_pending')
+                    ->label('مزامنة كافة المعلقات الآن')
+                    ->icon('heroicon-o-arrow-path')
+                    ->color('primary')
+                    ->requiresConfirmation()
+                    ->modalHeading('مزامنة الفواتير المعلقة دفعة واحدة')
+                    ->modalDescription('سيتم إرسال كافة فواتير قيود المعلقة (قيد الانتظار) إلى حسابك في قيود فوراً.')
+                    ->modalSubmitActionLabel('بدء المزامنة')
+                    ->modalCancelActionLabel('إلغاء')
+                    ->action(function () {
+                        $qoyodService = app(\App\Services\QoyodInvoiceSyncService::class);
+                        $result = $qoyodService->syncPendingInvoices(50);
+
+                        Notification::make()
+                            ->title('اكتملت مزامنة الفواتير المعلقة')
+                            ->body("تمت معالجة {$result['processed']} فاتورة (نجاح: {$result['success']} - فشل: {$result['failed']})")
+                            ->info()
+                            ->send();
+                    }),
             ]);
     }
 }

@@ -17,28 +17,32 @@ class ViewTrendyolOrder extends ViewRecord
     {
         return [
             Action::make('retry_sync')
-                ->label('مزامنة مع قيود')
-                ->icon('heroicon-o-arrow-path')
-                ->color('warning')
+                ->label(fn (TrendyolOrder $record): string => $record->invoiceSync?->status === QoyodSync::STATUS_SUCCESS ? 'إعادة الإرسال لقيود' : 'إرسال لقيود الآن')
+                ->icon('heroicon-o-paper-airplane')
+                ->color(fn (TrendyolOrder $record): string => $record->invoiceSync?->status === QoyodSync::STATUS_SUCCESS ? 'gray' : 'primary')
                 ->requiresConfirmation()
-                ->modalHeading('تأكيد المزامنة مع قيود')
-                ->modalDescription('هل أنت متأكد من رغبتك في إرسال فاتورة هذا الطلب إلى نظام قيود؟')
-                ->modalSubmitActionLabel('نعم، ابدأ المزامنة')
+                ->modalHeading('إرسال الفاتورة إلى قيود الآن')
+                ->modalDescription(fn (TrendyolOrder $record): string => "سيتم إنشاء وإرسال فاتورة المبيعات للطلب رقم {$record->order_number} مباشرة إلى حساب قيود.")
+                ->modalSubmitActionLabel('نعم، أرسل الآن')
                 ->modalCancelActionLabel('إلغاء')
                 ->action(function (TrendyolOrder $record) {
-                    $sync = $record->syncs()->firstOrCreate(
-                        ['type' => QoyodSync::TYPE_INVOICE],
-                        [
-                            'status' => QoyodSync::STATUS_PENDING,
-                            'qoyod_reference' => 'TY-' . $record->shipment_package_id,
-                        ]
-                    );
-                    $sync->update(['status' => QoyodSync::STATUS_PENDING]);
+                    $qoyodService = app(\App\Services\QoyodInvoiceSyncService::class);
+                    $result = $qoyodService->syncOrderInvoice($record);
 
-                    Notification::make()
-                        ->title('تمت جدولة الطلب للمزامنة مع قيود بنجاح')
-                        ->success()
-                        ->send();
+                    if ($result['success']) {
+                        Notification::make()
+                            ->title('تم إرسال الفاتورة إلى قيود بنجاح')
+                            ->body($result['message'] ?? 'تمت المزامنة بنجاح')
+                            ->success()
+                            ->send();
+                    } else {
+                        Notification::make()
+                            ->title('فشل إرسال الفاتورة لقيود')
+                            ->body($result['error'] ?? 'حدث خطأ غير معروف')
+                            ->danger()
+                            ->persistent()
+                            ->send();
+                    }
                 }),
         ];
     }

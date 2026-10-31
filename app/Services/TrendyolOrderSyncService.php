@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\QoyodSync;
 use App\Models\TrendyolOrder;
 use App\Models\TrendyolOrderItem;
 use Carbon\Carbon;
@@ -261,6 +262,17 @@ class TrendyolOrderSyncService
                 if (!empty($itemsToInsert)) {
                     TrendyolOrderItem::insert($itemsToInsert);
                 }
+            }
+
+            // Ensure an invoice sync record exists if approved for sync
+            if ($order->isApprovedForSync()) {
+                $order->syncs()->firstOrCreate(
+                    ['type' => QoyodSync::TYPE_INVOICE],
+                    [
+                        'status' => QoyodSync::STATUS_PENDING,
+                        'qoyod_reference' => 'TY-' . ($order->shipment_package_id ?: $order->order_number),
+                    ]
+                );
             }
 
             return $action;

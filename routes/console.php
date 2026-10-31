@@ -14,3 +14,9 @@ Schedule::command('trendyol:sync-orders --pages=2')
     ->withoutOverlapping()
     ->runInBackground();
 
+// مزامنة فواتير قيود المعلقة تلقائياً كل 10 دقائق
+Schedule::command('qoyod:sync-invoices --limit=50')
+    ->everyTenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+

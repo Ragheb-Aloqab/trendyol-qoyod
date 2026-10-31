@@ -48,6 +48,10 @@ class TrendyolOrderSyncService
             throw new Exception('بيانات اتصال ترينديول غير مكتملة في ملف .env (Supplier ID, API Key, API Secret)');
         }
 
+        if (empty($startDate)) {
+            $startDate = \App\Models\AppSetting::get('sync_start_date', config('services.trendyol.sync_start_date', '2026-10-01'));
+        }
+
         $startEpoch = $this->normalizeToMilliseconds($startDate, isEndOfDay: false);
         $endEpoch = $this->normalizeToMilliseconds($endDate, isEndOfDay: true);
 

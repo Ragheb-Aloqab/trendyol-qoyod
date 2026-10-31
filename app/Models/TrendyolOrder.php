@@ -79,7 +79,17 @@ class TrendyolOrder extends Model
 
     public function isApprovedForSync(): bool
     {
-        $approvedStatuses = config('services.trendyol.approved_statuses', ['Shipped', 'Delivered']);
-        return in_array($this->status, $approvedStatuses, true);
+        // 1. منع أي طلب أقدم من تاريخ بدء المزامنة المعتمد (مثل قبل 2026-10-01)
+        $startDate = AppSetting::get('sync_start_date', config('services.trendyol.sync_start_date', '2026-10-01'));
+        if ($this->order_date && ! empty($startDate)) {
+            $parsedStart = \Illuminate\Support\Carbon::parse($startDate)->startOfDay();
+            if ($this->order_date->lt($parsedStart)) {
+                return false;
+            }
+        }
+
+        // 2. التحقق من أن حالة الطلب معتمدة للمزامنة (افتراضياً: Delivered فقط)
+        $approvedStatuses = AppSetting::get('approved_statuses', config('services.trendyol.approved_statuses', ['Delivered']));
+        return in_array($this->status, (array) $approvedStatuses, true);
     }
 }

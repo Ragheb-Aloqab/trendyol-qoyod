@@ -43,6 +43,17 @@ class QoyodInvoiceSyncService
             return ['success' => false, 'error' => $error];
         }
 
+        // منع إرسال الفاتورة لقيود إن كان الطلب قبل تاريخ بدء المزامنة المعتمد (شهر 10)
+        $startDate = \App\Models\AppSetting::get('sync_start_date', config('services.trendyol.sync_start_date', '2026-10-01'));
+        if ($order->order_date && ! empty($startDate)) {
+            $parsedStart = \Illuminate\Support\Carbon::parse($startDate)->startOfDay();
+            if ($order->order_date->lt($parsedStart)) {
+                $error = "تم منع المزامنة: تاريخ الطلب ({$order->order_date->format('Y-m-d')}) يسبق تاريخ بدء المزامنة المعتمد ({$startDate}).";
+                $sync->markAsFailed($error);
+                return ['success' => false, 'error' => $error];
+            }
+        }
+
         // Ensure order items are loaded
         $order->loadMissing('items');
 

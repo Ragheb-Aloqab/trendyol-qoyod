@@ -28,6 +28,12 @@ class SyncQoyodInvoicesCommand extends Command
      */
     public function handle(QoyodInvoiceSyncService $qoyodService): int
     {
+        if (! \App\Models\AppSetting::get('auto_sync_enabled', config('services.trendyol.auto_sync_enabled', true))
+            || ! \App\Models\AppSetting::get('auto_send_to_qoyod', config('services.trendyol.auto_send_to_qoyod', true))) {
+            $this->warn('تم تخطي إرسال الفواتير لقيود: المزامنة التلقائية معطلة حالياً من إعدادات النظام.');
+            return Command::SUCCESS;
+        }
+
         $limit = (int) $this->option('limit') ?: 50;
         $this->info("بدء معالجة فواتير قيود المعلقة (الحد الأقصى: {$limit})...");
 

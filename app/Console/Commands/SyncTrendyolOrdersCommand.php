@@ -33,6 +33,12 @@ class SyncTrendyolOrdersCommand extends Command
      */
     public function handle(TrendyolOrderSyncService $syncService): int
     {
+        $force = (bool) $this->option('all') || !empty($this->option('start-date'));
+        if (! $force && ! \App\Models\AppSetting::get('auto_sync_enabled', config('services.trendyol.auto_sync_enabled', true))) {
+            $this->warn('تم تخطي المزامنة التلقائية: المزامنة التلقائية معطلة حالياً من إعدادات النظام.');
+            return Command::SUCCESS;
+        }
+
         $this->info('بدء الاتصال بخوادم ترينديول لسحب الطلبات...');
 
         $syncAll = (bool) $this->option('all');

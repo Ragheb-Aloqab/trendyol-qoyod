@@ -17,7 +17,9 @@ class SyncTrendyolOrdersCommand extends Command
                             {--all : سحب كافة الطلبات القديمة والجديدة بدون حد للصفحات}
                             {--pages= : تحديد الحد الأقصى لعدد الصفحات (افتراضياً صفحة واحدة للمزامنة السريعة)}
                             {--size=50 : عدد الطلبات في الصفحة الواحدة}
-                            {--status= : تصفية حسب حالة معينة (مثال: Shipped, Delivered, Created)}';
+                            {--status= : تصفية حسب حالة معينة (مثال: Shipped, Delivered, Created)}
+                            {--start-date= : تصفية الطلبات من تاريخ معين (مثال: 2026-10-01)}
+                            {--end-date= : تصفية الطلبات إلى تاريخ معين (مثال: 2026-10-31)}';
 
     /**
      * The console command description.
@@ -38,17 +40,24 @@ class SyncTrendyolOrdersCommand extends Command
         $maxPages = $syncAll ? null : ($pagesOption !== null ? (int) $pagesOption : 1);
         $pageSize = (int) $this->option('size') ?: 50;
         $status = $this->option('status');
+        $startDate = $this->option('start-date');
+        $endDate = $this->option('end-date');
 
         $this->line("الوضع: " . ($syncAll ? 'سحب كامل الطلبات (القديمة والجديدة)' : "سحب محدود ({$maxPages} صفحات)"));
         if (!empty($status)) {
             $this->line("التصفية حسب الحالة: {$status}");
+        }
+        if (!empty($startDate) || !empty($endDate)) {
+            $this->line("النطاق الزمني: من [{$startDate}] إلى [{$endDate}]");
         }
 
         try {
             $result = $syncService->syncOrders(
                 maxPages: $maxPages,
                 pageSize: $pageSize,
-                status: $status
+                status: $status,
+                startDate: $startDate,
+                endDate: $endDate
             );
 
             $this->newLine();

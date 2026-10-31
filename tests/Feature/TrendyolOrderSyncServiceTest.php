@@ -81,4 +81,35 @@ class TrendyolOrderSyncServiceTest extends TestCase
             'product_name' => 'Black Dress',
         ]);
     }
+
+    public function test_sync_service_sends_date_range_query_parameters(): void
+    {
+        config()->set('services.trendyol.supplier_id', '1336083');
+        config()->set('services.trendyol.api_key', 'test_key');
+        config()->set('services.trendyol.api_secret', 'test_secret');
+        config()->set('services.trendyol.base_url', 'https://apigw.trendyol.com');
+
+        Http::fake([
+            'https://apigw.trendyol.com/*' => Http::response([
+                'page' => 0,
+                'size' => 50,
+                'totalElements' => 0,
+                'totalPages' => 0,
+                'content' => [],
+            ], 200),
+        ]);
+
+        $service = new TrendyolOrderSyncService();
+        $service->syncOrders(
+            maxPages: 1,
+            startDate: '2026-10-01',
+            endDate: '2026-10-15'
+        );
+
+        Http::assertSent(function ($request) {
+            $url = $request->url();
+            return str_contains($url, 'startDate=') && str_contains($url, 'endDate=');
+        });
+    }
 }
+

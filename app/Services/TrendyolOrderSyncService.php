@@ -32,20 +32,23 @@ class TrendyolOrderSyncService
      * @param int|null $maxPages Maximum number of pages to fetch (null = fetch all available pages)
      * @param int $pageSize Number of orders per page (default 50, max 200)
      * @param string|null $status Filter by specific status (e.g. Created, Shipped, Delivered)
-     * @param int|null $startDate Filter by start date (epoch in milliseconds)
-     * @param int|null $endDate Filter by end date (epoch in milliseconds)
+     * @param mixed $startDate Filter by start date (epoch in milliseconds, seconds, Carbon, or Y-m-d string)
+     * @param mixed $endDate Filter by end date (epoch in milliseconds, seconds, Carbon, or Y-m-d string)
      * @return array Summary of sync results
      */
     public function syncOrders(
         ?int $maxPages = null,
         int $pageSize = 50,
         ?string $status = null,
-        ?int $startDate = null,
-        ?int $endDate = null
+        mixed $startDate = null,
+        mixed $endDate = null
     ): array {
         if (empty($this->supplierId) || empty($this->apiKey) || empty($this->apiSecret)) {
             throw new Exception('بيانات اتصال ترينديول غير مكتملة في ملف .env (Supplier ID, API Key, API Secret)');
         }
+
+        $startEpoch = $this->normalizeToMilliseconds($startDate, isEndOfDay: false);
+        $endEpoch = $this->normalizeToMilliseconds($endDate, isEndOfDay: true);
 
         $totalFetched = 0;
         $createdCount = 0;
@@ -66,11 +69,11 @@ class TrendyolOrderSyncService
             if (!empty($status)) {
                 $queryParams['status'] = $status;
             }
-            if ($startDate !== null) {
-                $queryParams['startDate'] = $startDate;
+            if ($startEpoch !== null) {
+                $queryParams['startDate'] = $startEpoch;
             }
-            if ($endDate !== null) {
-                $queryParams['endDate'] = $endDate;
+            if ($endEpoch !== null) {
+                $queryParams['endDate'] = $endEpoch;
             }
 
             try {
@@ -288,4 +291,37 @@ class TrendyolOrderSyncService
             return null;
         }
     }
+
+    /**
+     * Convert various date formats (Y-m-d string, Carbon, timestamp in sec/ms) into epoch milliseconds.
+     */
+    public function normalizeToMilliseconds(mixed $date, bool $isEndOfDay = false): ?int
+    {
+        if (blank($date)) {
+            return null;
+        }
+
+        if (is_numeric($date)) {
+            $num = (int) $date;
+            // If already milliseconds (> 10 digits)
+            if ($num > 9999999999) {
+                return $num;
+            }
+            return $num * 1000;
+        }
+
+        try {
+            $carbon = Carbon::parse($date);
+            if ($isEndOfDay) {
+                $carbon = $carbon->endOfDay();
+            } else {
+                $carbon = $carbon->startOfDay();
+            }
+
+            return (int) ($carbon->getTimestamp() * 1000 + ($isEndOfDay ? 999 : 0));
+        } catch (Throwable) {
+            return null;
+        }
+    }
 }
+

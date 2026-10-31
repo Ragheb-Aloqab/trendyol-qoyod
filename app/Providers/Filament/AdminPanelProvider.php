@@ -33,6 +33,8 @@ class AdminPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Amber,
             ])
+            ->sidebarCollapsibleOnDesktop()
+            ->collapsibleNavigationGroups()
             ->profile(\App\Filament\Pages\Auth\EditProfile::class, isSimple: false)
             ->userMenuItems([
                 'profile' => \Filament\Navigation\MenuItem::make()

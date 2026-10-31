@@ -29,13 +29,13 @@ class TrendyolOrderInfolist
                         TextEntry::make('status')
                             ->label('حالة الطلب في ترينديول')
                             ->badge()
-                            ->color(fn (string $state): string => match ($state) {
+                            ->color(fn (?string $state): string => match ($state) {
                                 'Delivered' => 'success',
                                 'Shipped' => 'info',
                                 'Picking', 'Invoiced', 'Created', 'AtCollectionPoint' => 'warning',
                                 default => 'danger',
                             })
-                            ->formatStateUsing(fn (string $state): string => match ($state) {
+                            ->formatStateUsing(fn (?string $state): string => match ($state) {
                                 'Delivered' => 'تم التوصيل',
                                 'Shipped' => 'تم الشحن',
                                 'Picking' => 'جاري التجهيز',
@@ -44,7 +44,7 @@ class TrendyolOrderInfolist
                                 'Cancelled' => 'ملغي',
                                 'Returned' => 'مرتجع',
                                 'UnDelivered' => 'تعذر التسليم',
-                                default => $state,
+                                default => $state ?? 'غير محدد',
                             }),
 
                         TextEntry::make('order_date')
@@ -53,15 +53,15 @@ class TrendyolOrderInfolist
 
                         TextEntry::make('gross_amount')
                             ->label('المبلغ الإجمالي')
-                            ->money(fn (TrendyolOrder $record): string => $record->currency ?? 'TRY'),
+                            ->money(fn (?TrendyolOrder $record): string => $record?->currency ?? 'TRY'),
 
                         TextEntry::make('total_discount')
                             ->label('إجمالي الخصم')
-                            ->money(fn (TrendyolOrder $record): string => $record->currency ?? 'TRY'),
+                            ->money(fn (?TrendyolOrder $record): string => $record?->currency ?? 'TRY'),
 
                         TextEntry::make('total_price')
                             ->label('الصافي المطلوب')
-                            ->money(fn (TrendyolOrder $record): string => $record->currency ?? 'TRY')
+                            ->money(fn (?TrendyolOrder $record): string => $record?->currency ?? 'TRY')
                             ->weight('bold'),
 
                         TextEntry::make('currency')

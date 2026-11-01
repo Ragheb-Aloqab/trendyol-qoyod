@@ -348,7 +348,7 @@ class QoyodInvoiceSyncService
             }
         }
 
-        // 3. Search customer by exact name
+        // 3. Search customer by exact name or contact_name
         $searchName = Http::withHeaders($headers)
             ->timeout(10)
             ->get("{$this->baseUrl}/customers", [
@@ -359,13 +359,25 @@ class QoyodInvoiceSyncService
             return (int) $searchName->json('customers')[0]['id'];
         }
 
+        $searchContactName = Http::withHeaders($headers)
+            ->timeout(10)
+            ->get("{$this->baseUrl}/customers", [
+                'q[contact_name_eq]' => $name,
+            ]);
+
+        if ($searchContactName->successful() && ! empty($searchContactName->json('customers')[0]['id'])) {
+            return (int) $searchContactName->json('customers')[0]['id'];
+        }
+
         // 4. Create new customer profile in Qoyod
         $customerData = [
             'name' => $name,
+            'contact_name' => $name,
         ];
 
         if (! empty($phone)) {
             $customerData['phone'] = $phone;
+            $customerData['phone_number'] = $phone;
         }
 
         if (! empty($email) && filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -374,6 +386,7 @@ class QoyodInvoiceSyncService
 
         if (! empty($taxNumber)) {
             $customerData['tax_number'] = $taxNumber;
+            $customerData['vat_number'] = $taxNumber;
         }
 
         $city = $order->shipment_address['city'] ?? $order->invoice_address['city'] ?? null;
@@ -391,7 +404,7 @@ class QoyodInvoiceSyncService
             return (int) $createResponse->json('customer')['id'];
         }
 
-        // 5. Fallback: Search customer by name contains if creation was rejected (e.g. name duplicate)
+        // 5. Fallback: Search customer by name or contact_name contains if creation was rejected (e.g. name duplicate)
         $searchFallback = Http::withHeaders($headers)
             ->timeout(10)
             ->get("{$this->baseUrl}/customers", [
@@ -400,6 +413,16 @@ class QoyodInvoiceSyncService
 
         if ($searchFallback->successful() && ! empty($searchFallback->json('customers')[0]['id'])) {
             return (int) $searchFallback->json('customers')[0]['id'];
+        }
+
+        $searchFallbackContact = Http::withHeaders($headers)
+            ->timeout(10)
+            ->get("{$this->baseUrl}/customers", [
+                'q[contact_name_cont]' => $name,
+            ]);
+
+        if ($searchFallbackContact->successful() && ! empty($searchFallbackContact->json('customers')[0]['id'])) {
+            return (int) $searchFallbackContact->json('customers')[0]['id'];
         }
 
         // Never assign to an arbitrary first customer! Log and throw clear error

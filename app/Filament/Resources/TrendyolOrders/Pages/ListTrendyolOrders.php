@@ -32,10 +32,12 @@ class ListTrendyolOrders extends ListRecords
                         ->schema([
                             DatePicker::make('start_date')
                                 ->label('من تاريخ (بداية الفترة)')
-                                ->default(now()->subDays(14)->format('Y-m-d'))
+                                ->default(fn () => \App\Models\AppSetting::get('sync_start_date', '2026-10-01'))
+                                ->minDate(fn () => \App\Models\AppSetting::get('sync_start_date', '2026-10-01'))
+                                ->maxDate(now())
                                 ->required()
                                 ->native(false)
-                                ->maxDate(now())
+                                ->helperText('ممنوع اختيار تاريخ يسبق تاريخ بدء المزامنة (2026-10-01).')
                                 ->prefixIcon('heroicon-m-calendar'),
 
                             DatePicker::make('end_date')
@@ -52,11 +54,11 @@ class ListTrendyolOrders extends ListRecords
                         ->label('تصفية حسب حالة الطلب (اختياري)')
                         ->placeholder('كافة الحالات')
                         ->options([
-                            'Created' => 'طلب جديد (Created)',
+                            'Delivered' => 'تم التوصيل (Delivered)',
+                            'Shipped' => 'تم الشحن (Shipped)',
                             'Picking' => 'جاري التجهيز (Picking)',
                             'Invoiced' => 'تمت الفوترة (Invoiced)',
-                            'Shipped' => 'تم الشحن (Shipped)',
-                            'Delivered' => 'تم التوصيل (Delivered)',
+                            'Created' => 'طلب جديد (Created)',
                             'Cancelled' => 'ملغي (Cancelled)',
                             'Returned' => 'مرتجع (Returned)',
                             'UnDelivered' => 'تعذر التسليم (UnDelivered)',
@@ -79,11 +81,14 @@ class ListTrendyolOrders extends ListRecords
                         $maxPages = $data['max_pages'] === 'all' ? null : (int) $data['max_pages'];
                         $status = !empty($data['status']) ? $data['status'] : null;
 
+                        $minAllowed = \App\Models\AppSetting::get('sync_start_date', '2026-10-01');
+                        $effectiveStart = max($data['start_date'], $minAllowed);
+
                         $result = $syncService->syncOrders(
                             maxPages: $maxPages,
                             pageSize: 50,
                             status: $status,
-                            startDate: $data['start_date'],
+                            startDate: $effectiveStart,
                             endDate: $data['end_date'],
                         );
 

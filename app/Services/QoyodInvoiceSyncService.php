@@ -28,7 +28,7 @@ class QoyodInvoiceSyncService
     /**
      * Send an invoice for a specific QoyodSync record to Qoyod API.
      */
-    public function syncInvoice(QoyodSync $sync): array
+    public function syncInvoice(QoyodSync $sync, bool $force = false): array
     {
         if (empty($this->apiKey)) {
             $error = 'مفتاح QOYOD_API_KEY غير موجود في إعدادات ملف .env';
@@ -72,49 +72,22 @@ class QoyodInvoiceSyncService
 
         try {
             // 1. Idempotency Check: Verify if invoice already exists in Qoyod by order number reference
-            $existingCheck = Http::withHeaders($headers)
-                ->timeout(10)
-                ->get("{$this->baseUrl}/invoices", [
-                    'q[reference_eq]' => $reference,
-                ]);
-
-            if ($existingCheck->successful()) {
-                $invoices = $existingCheck->json('invoices') ?? [];
-                if (! empty($invoices[0]['id'])) {
-                    $existingInvoice = $invoices[0];
-                    $qoyodId = (string) $existingInvoice['id'];
-
-                    $sync->markAsSuccess($qoyodId, [
-                        'invoice' => $existingInvoice,
-                        'note' => 'تم العثور على الفاتورة مسبقاً في قيود بنفس الرقم المرجعي للطلب',
-                    ]);
-
-                    return [
-                        'success' => true,
-                        'qoyod_id' => $qoyodId,
-                        'message' => "تمت المزامنة بنجاح (الفاتورة مسجلة مسبقاً في قيود برقم {$qoyodId})",
-                    ];
-                }
-            }
-
-            // Also check old reference format (TY-shipment_package_id) if exists to avoid duplicate invoices
-            if (! empty($order->shipment_package_id)) {
-                $oldPackageRef = 'TY-' . $order->shipment_package_id;
-                $oldCheck = Http::withHeaders($headers)
+            if (! $force) {
+                $existingCheck = Http::withHeaders($headers)
                     ->timeout(10)
                     ->get("{$this->baseUrl}/invoices", [
-                        'q[reference_eq]' => $oldPackageRef,
+                        'q[reference_eq]' => $reference,
                     ]);
 
-                if ($oldCheck->successful()) {
-                    $invoices = $oldCheck->json('invoices') ?? [];
+                if ($existingCheck->successful()) {
+                    $invoices = $existingCheck->json('invoices') ?? [];
                     if (! empty($invoices[0]['id'])) {
                         $existingInvoice = $invoices[0];
                         $qoyodId = (string) $existingInvoice['id'];
 
                         $sync->markAsSuccess($qoyodId, [
                             'invoice' => $existingInvoice,
-                            'note' => 'تم العثور على الفاتورة مسبقاً في قيود برقم الشحنة السابق',
+                            'note' => 'تم العثور على الفاتورة مسبقاً في قيود بنفس الرقم المرجعي للطلب',
                         ]);
 
                         return [
@@ -122,6 +95,35 @@ class QoyodInvoiceSyncService
                             'qoyod_id' => $qoyodId,
                             'message' => "تمت المزامنة بنجاح (الفاتورة مسجلة مسبقاً في قيود برقم {$qoyodId})",
                         ];
+                    }
+                }
+
+                // Also check old reference format (TY-shipment_package_id) if exists to avoid duplicate invoices
+                if (! empty($order->shipment_package_id)) {
+                    $oldPackageRef = 'TY-' . $order->shipment_package_id;
+                    $oldCheck = Http::withHeaders($headers)
+                        ->timeout(10)
+                        ->get("{$this->baseUrl}/invoices", [
+                            'q[reference_eq]' => $oldPackageRef,
+                        ]);
+
+                    if ($oldCheck->successful()) {
+                        $invoices = $oldCheck->json('invoices') ?? [];
+                        if (! empty($invoices[0]['id'])) {
+                            $existingInvoice = $invoices[0];
+                            $qoyodId = (string) $existingInvoice['id'];
+
+                            $sync->markAsSuccess($qoyodId, [
+                                'invoice' => $existingInvoice,
+                                'note' => 'تم العثور على الفاتورة مسبقاً في قيود برقم الشحنة السابق',
+                            ]);
+
+                            return [
+                                'success' => true,
+                                'qoyod_id' => $qoyodId,
+                                'message' => "تمت المزامنة بنجاح (الفاتورة مسجلة مسبقاً في قيود برقم {$qoyodId})",
+                            ];
+                        }
                     }
                 }
             }
@@ -239,7 +241,7 @@ class QoyodInvoiceSyncService
     /**
      * Sync invoice for a TrendyolOrder directly.
      */
-    public function syncOrderInvoice(TrendyolOrder $order): array
+    public function syncOrderInvoice(TrendyolOrder $order, bool $force = false): array
     {
         $sync = $order->syncs()->firstOrCreate(
             ['type' => QoyodSync::TYPE_INVOICE],
@@ -253,7 +255,40 @@ class QoyodInvoiceSyncService
             $sync->update(['qoyod_reference' => (string) $order->order_number]);
         }
 
-        return $this->syncInvoice($sync);
+        return $this->syncInvoice($sync, $force);
+    }
+
+    /**
+     * Re-sync all previously synced orders (useful when invoices were purged in Qoyod).
+     */
+    public function resyncAllSyncedInvoices(int $limit = 100, bool $force = false): array
+    {
+        $syncedOrders = TrendyolOrder::whereHas('invoiceSync', fn ($q) => $q->where('status', QoyodSync::STATUS_SUCCESS))
+            ->take($limit)
+            ->get();
+
+        $processed = 0;
+        $success = 0;
+        $failed = 0;
+        $errors = [];
+
+        foreach ($syncedOrders as $order) {
+            $processed++;
+            $result = $this->syncOrderInvoice($order, $force);
+            if ($result['success']) {
+                $success++;
+            } else {
+                $failed++;
+                $errors[] = "الطلب {$order->order_number}: " . ($result['error'] ?? 'خطأ');
+            }
+        }
+
+        return [
+            'processed' => $processed,
+            'success' => $success,
+            'failed' => $failed,
+            'errors' => $errors,
+        ];
     }
 
     /**

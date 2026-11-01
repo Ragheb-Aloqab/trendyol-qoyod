@@ -5,11 +5,15 @@ namespace App\Filament\Resources\TrendyolOrders\Tables;
 use App\Models\QoyodSync;
 use App\Models\TrendyolOrder;
 use Filament\Actions\Action;
+use Filament\Actions\BulkAction;
+use Filament\Actions\BulkActionGroup;
 use Filament\Actions\ViewAction;
 use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 
 class TrendyolOrdersTable
 {
@@ -86,8 +90,27 @@ class TrendyolOrdersTable
                     ->sortable(),
             ])
             ->filters([
+                SelectFilter::make('qoyod_sync_status')
+                    ->label('حالة المزامنة في قيود')
+                    ->options([
+                        'success' => 'تمت المزامنة',
+                        'pending' => 'قيد الانتظار',
+                        'failed' => 'فشلت المزامنة',
+                        'not_synced' => 'غير مزامن',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (blank($data['value'] ?? null)) {
+                            return $query;
+                        }
+
+                        return match ($data['value']) {
+                            'not_synced' => $query->whereDoesntHave('invoiceSync'),
+                            default => $query->whereHas('invoiceSync', fn (Builder $q) => $q->where('status', $data['value'])),
+                        };
+                    }),
+
                 SelectFilter::make('status')
-                    ->label('تصفية حسب حالة الطلب')
+                    ->label('تصفية حسب حالة الطلب في ترينديول')
                     ->options([
                         'Created' => 'طلب جديد',
                         'Picking' => 'جاري التجهيز',
@@ -108,8 +131,8 @@ class TrendyolOrdersTable
                     ->icon('heroicon-o-paper-airplane')
                     ->color(fn (TrendyolOrder $record): string => $record->invoiceSync?->status === QoyodSync::STATUS_SUCCESS ? 'gray' : 'primary')
                     ->requiresConfirmation()
-                    ->modalHeading('إرسال الفاتورة إلى قيود الآن')
-                    ->modalDescription(fn (TrendyolOrder $record): string => "سيتم إنشاء وإرسال فاتورة المبيعات للطلب رقم {$record->order_number} مباشرة إلى حساب قيود.")
+                    ->modalHeading(fn (TrendyolOrder $record): string => $record->invoiceSync?->status === QoyodSync::STATUS_SUCCESS ? 'إعادة إرسال الفاتورة لقيود وإنشاء فاتورة جديدة' : 'إرسال الفاتورة إلى قيود الآن')
+                    ->modalDescription(fn (TrendyolOrder $record): string => "سيتم إنشاء وإرسال فاتورة المبيعات للطلب رقم {$record->order_number} مباشرة إلى حساب قيود بالبيانات والأسعار المحدثة.")
                     ->modalSubmitActionLabel('نعم، أرسل الآن')
                     ->modalCancelActionLabel('إلغاء')
                     ->action(function (TrendyolOrder $record) {
@@ -133,7 +156,86 @@ class TrendyolOrdersTable
                     }),
             ])
             ->toolbarActions([
-                // Read-only
+                BulkActionGroup::make([
+                    BulkAction::make('bulk_sync_to_qoyod')
+                        ->label('إعادة إرسال الطلبات المحددة لقيود')
+                        ->icon('heroicon-o-paper-airplane')
+                        ->color('primary')
+                        ->requiresConfirmation()
+                        ->modalHeading('إعادة مزامنة الطلبات المحددة مع قيود')
+                        ->modalDescription('سيتم إنشاء وإرسال فواتير جديدة إلى قيود لكافة الطلبات المحددة بالبيانات والأسعار المحدثة.')
+                        ->modalSubmitActionLabel('نعم، أرسل الآن')
+                        ->modalCancelActionLabel('إلغاء')
+                        ->action(function (Collection $records) {
+                            $qoyodService = app(\App\Services\QoyodInvoiceSyncService::class);
+                            $successCount = 0;
+                            $failCount = 0;
+                            $errors = [];
+
+                            foreach ($records as $record) {
+                                $result = $qoyodService->syncOrderInvoice($record);
+                                if ($result['success']) {
+                                    $successCount++;
+                                } else {
+                                    $failCount++;
+                                    $errors[] = "الطلب {$record->order_number}: " . ($result['error'] ?? 'خطأ');
+                                }
+                            }
+
+                            if ($failCount === 0) {
+                                Notification::make()
+                                    ->title('اكتملت المزامنة بنجاح')
+                                    ->body("تم إرسال {$successCount} فاتورة إلى قيود بنجاح.")
+                                    ->success()
+                                    ->send();
+                            } else {
+                                Notification::make()
+                                    ->title("اكتملت المزامنة: {$successCount} ناجحة، {$failCount} فاشلة")
+                                    ->body(implode("\n", array_slice($errors, 0, 3)))
+                                    ->warning()
+                                    ->persistent()
+                                    ->send();
+                            }
+                        }),
+                ]),
+
+                Action::make('resync_all_synced_invoices')
+                    ->label('إعادة مزامنة كافة الفواتير المحذوفة من قيود')
+                    ->icon('heroicon-o-arrow-path')
+                    ->color('warning')
+                    ->requiresConfirmation()
+                    ->modalHeading('إعادة مزامنة كافة الفواتير التي تمت مزامنتها مسبقاً')
+                    ->modalDescription('سيتم فحص كافة الطلبات المسجلة كـ "تمت المزامنة" وإنشاء فواتير مبيعات جديدة لها في قيود بالبيانات والأسعار والضرائب المحدثة. هل تريد المتابعة؟')
+                    ->modalSubmitActionLabel('نعم، ابدأ إعادة المزامنة')
+                    ->modalCancelActionLabel('إلغاء')
+                    ->action(function () {
+                        $qoyodService = app(\App\Services\QoyodInvoiceSyncService::class);
+                        $result = $qoyodService->resyncAllSyncedInvoices(100);
+
+                        if ($result['processed'] === 0) {
+                            Notification::make()
+                                ->title('لا توجد فواتير')
+                                ->body('لم يتم العثور على أي طلبات مسجلة كـ "تمت المزامنة".')
+                                ->info()
+                                ->send();
+                            return;
+                        }
+
+                        if ($result['failed'] === 0) {
+                            Notification::make()
+                                ->title('اكتملت إعادة المزامنة بنجاح')
+                                ->body("تم إنشاء وإرسال {$result['success']} فاتورة جديدة إلى قيود بنجاح.")
+                                ->success()
+                                ->send();
+                        } else {
+                            Notification::make()
+                                ->title("اكتملت العملية: {$result['success']} ناجحة، {$result['failed']} فاشلة")
+                                ->body(implode("\n", array_slice($result['errors'], 0, 3)))
+                                ->warning()
+                                ->persistent()
+                                ->send();
+                        }
+                    }),
             ]);
     }
 }

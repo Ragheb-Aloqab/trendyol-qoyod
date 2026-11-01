@@ -63,10 +63,15 @@ class QoyodInvoiceSyncService
             'Content-Type' => 'application/json',
         ];
 
-        $reference = $sync->qoyod_reference ?: ('TY-' . ($order->shipment_package_id ?: $order->order_number));
+        $reference = (string) ($order->order_number ?: $sync->qoyod_reference);
+
+        // Keep local sync record synchronized with the order_number reference
+        if ($sync->qoyod_reference !== $reference) {
+            $sync->update(['qoyod_reference' => $reference]);
+        }
 
         try {
-            // 1. Idempotency Check: Verify if invoice already exists in Qoyod by reference
+            // 1. Idempotency Check: Verify if invoice already exists in Qoyod by order number reference
             $existingCheck = Http::withHeaders($headers)
                 ->timeout(10)
                 ->get("{$this->baseUrl}/invoices", [
@@ -81,7 +86,7 @@ class QoyodInvoiceSyncService
 
                     $sync->markAsSuccess($qoyodId, [
                         'invoice' => $existingInvoice,
-                        'note' => 'تم العثور على الفاتورة مسبقاً في قيود بنفس الرقم المرجعي',
+                        'note' => 'تم العثور على الفاتورة مسبقاً في قيود بنفس الرقم المرجعي للطلب',
                     ]);
 
                     return [
@@ -89,6 +94,35 @@ class QoyodInvoiceSyncService
                         'qoyod_id' => $qoyodId,
                         'message' => "تمت المزامنة بنجاح (الفاتورة مسجلة مسبقاً في قيود برقم {$qoyodId})",
                     ];
+                }
+            }
+
+            // Also check old reference format (TY-shipment_package_id) if exists to avoid duplicate invoices
+            if (! empty($order->shipment_package_id)) {
+                $oldPackageRef = 'TY-' . $order->shipment_package_id;
+                $oldCheck = Http::withHeaders($headers)
+                    ->timeout(10)
+                    ->get("{$this->baseUrl}/invoices", [
+                        'q[reference_eq]' => $oldPackageRef,
+                    ]);
+
+                if ($oldCheck->successful()) {
+                    $invoices = $oldCheck->json('invoices') ?? [];
+                    if (! empty($invoices[0]['id'])) {
+                        $existingInvoice = $invoices[0];
+                        $qoyodId = (string) $existingInvoice['id'];
+
+                        $sync->markAsSuccess($qoyodId, [
+                            'invoice' => $existingInvoice,
+                            'note' => 'تم العثور على الفاتورة مسبقاً في قيود برقم الشحنة السابق',
+                        ]);
+
+                        return [
+                            'success' => true,
+                            'qoyod_id' => $qoyodId,
+                            'message' => "تمت المزامنة بنجاح (الفاتورة مسجلة مسبقاً في قيود برقم {$qoyodId})",
+                        ];
+                    }
                 }
             }
 
@@ -113,7 +147,7 @@ class QoyodInvoiceSyncService
                 'issue_date' => $issueDate,
                 'due_date' => $issueDate,
                 'reference' => $reference,
-                'description' => "فاتورة طلب ترينديول رقم: {$order->order_number} - الشحنة: {$order->shipment_package_id}",
+                'description' => "فاتورة طلب ترينديول رقم: {$order->order_number}",
                 'status' => 'Approved',
                 'line_items' => $lineItems,
             ];
@@ -210,9 +244,13 @@ class QoyodInvoiceSyncService
             ['type' => QoyodSync::TYPE_INVOICE],
             [
                 'status' => QoyodSync::STATUS_PENDING,
-                'qoyod_reference' => 'TY-' . ($order->shipment_package_id ?: $order->order_number),
+                'qoyod_reference' => (string) $order->order_number,
             ]
         );
+
+        if ($sync->qoyod_reference !== (string) $order->order_number) {
+            $sync->update(['qoyod_reference' => (string) $order->order_number]);
+        }
 
         return $this->syncInvoice($sync);
     }
@@ -256,13 +294,33 @@ class QoyodInvoiceSyncService
     }
 
     /**
-     * Resolve Customer ID in Qoyod (Search by phone/email or create new).
+     * Resolve Customer ID in Qoyod (Search by phone/email/name or create new).
      */
     protected function resolveContactId(TrendyolOrder $order, array $headers): int
     {
-        $name = $order->customer_full_name ?: ('عميل ترينديول ' . $order->order_number);
-        $phone = $order->customer_phone;
-        $email = $order->customer_email;
+        $name = trim($order->customer_full_name);
+        if (empty($name) && ! empty($order->shipment_address['firstName'])) {
+            $name = trim(($order->shipment_address['firstName'] ?? '') . ' ' . ($order->shipment_address['lastName'] ?? ''));
+        }
+        if (empty($name)) {
+            $name = 'عميل ترينديول ' . $order->order_number;
+        }
+
+        $phone = trim($order->customer_phone ?? '');
+        if (empty($phone) && ! empty($order->shipment_address['phone'])) {
+            $phone = trim($order->shipment_address['phone']);
+        }
+
+        $email = trim($order->customer_email ?? '');
+
+        // Validate VAT / Tax Number (Must be 15 digits starting and ending with 3 for ZATCA)
+        $taxNumber = null;
+        if (! empty($order->tax_number)) {
+            $cleaned = preg_replace('/[^0-9]/', '', (string) $order->tax_number);
+            if (strlen($cleaned) === 15 && str_starts_with($cleaned, '3') && str_ends_with($cleaned, '3')) {
+                $taxNumber = $cleaned;
+            }
+        }
 
         // 1. Search existing customer by phone
         if (! empty($phone)) {
@@ -278,7 +336,7 @@ class QoyodInvoiceSyncService
         }
 
         // 2. Search existing customer by email
-        if (! empty($email)) {
+        if (! empty($email) && filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $search = Http::withHeaders($headers)
                 ->timeout(10)
                 ->get("{$this->baseUrl}/customers", [
@@ -302,34 +360,58 @@ class QoyodInvoiceSyncService
         }
 
         // 4. Create new customer profile in Qoyod
-        $customerPayload = [
-            'customer' => [
-                'name' => $name,
-                'phone' => $phone ?: null,
-                'email' => $email ?: null,
-                'status' => 'Active',
-                'vat_number' => $order->tax_number ?: null,
-            ],
+        $customerData = [
+            'name' => $name,
         ];
+
+        if (! empty($phone)) {
+            $customerData['phone'] = $phone;
+        }
+
+        if (! empty($email) && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $customerData['email'] = $email;
+        }
+
+        if (! empty($taxNumber)) {
+            $customerData['tax_number'] = $taxNumber;
+        }
+
+        $city = $order->shipment_address['city'] ?? $order->invoice_address['city'] ?? null;
+        if (! empty($city)) {
+            $customerData['city'] = $city;
+        }
 
         $createResponse = Http::withHeaders($headers)
             ->timeout(10)
-            ->post("{$this->baseUrl}/customers", $customerPayload);
+            ->post("{$this->baseUrl}/customers", [
+                'customer' => $customerData,
+            ]);
 
         if ($createResponse->successful() && ! empty($createResponse->json('customer')['id'])) {
             return (int) $createResponse->json('customer')['id'];
         }
 
-        // 5. Fallback to first existing customer in Qoyod if creation was rejected
-        $allCustomers = Http::withHeaders($headers)
+        // 5. Fallback: Search customer by name contains if creation was rejected (e.g. name duplicate)
+        $searchFallback = Http::withHeaders($headers)
             ->timeout(10)
-            ->get("{$this->baseUrl}/customers", ['page' => 1]);
+            ->get("{$this->baseUrl}/customers", [
+                'q[name_cont]' => $name,
+            ]);
 
-        if ($allCustomers->successful() && ! empty($allCustomers->json('customers')[0]['id'])) {
-            return (int) $allCustomers->json('customers')[0]['id'];
+        if ($searchFallback->successful() && ! empty($searchFallback->json('customers')[0]['id'])) {
+            return (int) $searchFallback->json('customers')[0]['id'];
         }
 
-        throw new Exception('تعذر العثور على عميل أو إنشاء عميل جديد في قيود: ' . $createResponse->body());
+        // Never assign to an arbitrary first customer! Log and throw clear error
+        $errorResponse = $createResponse->json() ?: $createResponse->body();
+        $errorDetails = is_array($errorResponse) ? json_encode($errorResponse, JSON_UNESCAPED_UNICODE) : (string) $errorResponse;
+
+        Log::error("Failed to create customer '{$name}' in Qoyod for order {$order->order_number}", [
+            'payload' => $customerData,
+            'response' => $errorResponse,
+        ]);
+
+        throw new Exception("تعذر إنشاء حساب العميل '{$name}' في قيود: " . $errorDetails);
     }
 
     /**
@@ -374,8 +456,9 @@ class QoyodInvoiceSyncService
             $line = [
                 'quantity' => $quantity,
                 'unit_price' => $unitPrice,
-                'discount' => $discount,
                 'tax_percent' => $vatRate,
+                'discount' => number_format(max(0, $discount), 2, '.', ''),
+                'discount_type' => 'amount',
             ];
 
             if ($productId) {
@@ -446,7 +529,20 @@ class QoyodInvoiceSyncService
             return (int) $createResponse->json('product')['id'];
         }
 
-        // 4. Fallback to first existing product in Qoyod if available
+        // 4. Search by contains if auto-creation failed
+        if (! empty($sku)) {
+            $searchCont = Http::withHeaders($headers)
+                ->timeout(10)
+                ->get("{$this->baseUrl}/products", [
+                    'q[sku_cont]' => $sku,
+                ]);
+
+            if ($searchCont->successful() && ! empty($searchCont->json('products')[0]['id'])) {
+                return (int) $searchCont->json('products')[0]['id'];
+            }
+        }
+
+        // 5. Fallback to first existing product in Qoyod if available
         $fallback = Http::withHeaders($headers)
             ->timeout(10)
             ->get("{$this->baseUrl}/products", ['page' => 1]);

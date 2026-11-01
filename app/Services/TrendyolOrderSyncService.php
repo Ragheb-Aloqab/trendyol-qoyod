@@ -274,7 +274,7 @@ class TrendyolOrderSyncService
                     ['type' => QoyodSync::TYPE_INVOICE],
                     [
                         'status' => QoyodSync::STATUS_PENDING,
-                        'qoyod_reference' => 'TY-' . ($order->shipment_package_id ?: $order->order_number),
+                        'qoyod_reference' => (string) $order->order_number,
                     ]
                 );
             }

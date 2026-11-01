@@ -507,13 +507,25 @@ class QoyodInvoiceSyncService
             $productId = $this->resolveProductId($item, $headers);
 
             $quantity = max((float) ($item->quantity ?: 1), 1.0);
-            $unitPrice = (float) $item->unit_price;
+            $netUnitPrice = (float) $item->unit_price;
             $discount = (float) ($item->discount ?: 0);
             $vatRate = (float) ($item->vat_rate ?: 15);
 
+            // سعر الوحدة قبل الخصم ليقوم قيود بخصم المبلغ المرسل والوصول للإجمالي الصحيح:
+            // Unit Price Before Discount = Net Unit Price + (Discount / Quantity)
+            $unitPriceBeforeDiscount = $netUnitPrice;
+            if ($discount > 0) {
+                $raw = is_array($item->raw_payload) ? $item->raw_payload : json_decode((string) ($item->raw_payload ?? ''), true);
+                if (! empty($raw['lineGrossAmount']) && (float) $raw['lineGrossAmount'] > 0) {
+                    $unitPriceBeforeDiscount = (float) $raw['lineGrossAmount'] / $quantity;
+                } else {
+                    $unitPriceBeforeDiscount = $netUnitPrice + ($discount / $quantity);
+                }
+            }
+
             $line = [
                 'quantity' => $quantity,
-                'unit_price' => $unitPrice,
+                'unit_price' => (float) number_format($unitPriceBeforeDiscount, 2, '.', ''),
                 'tax_percent' => $vatRate,
                 'discount' => number_format(max(0, $discount), 2, '.', ''),
                 'discount_type' => 'amount',
@@ -567,6 +579,10 @@ class QoyodInvoiceSyncService
 
         // 3. Auto-create product in Qoyod
         $categoryId = config('services.qoyod.default_category_id') ?: 1;
+        $quantity = max((float) ($item->quantity ?: 1), 1.0);
+        $discount = (float) ($item->discount ?: 0);
+        $sellingPrice = (float) $item->unit_price + ($discount > 0 ? ($discount / $quantity) : 0);
+
         $productPayload = [
             'product' => [
                 'name_ar' => $name,
@@ -574,7 +590,7 @@ class QoyodInvoiceSyncService
                 'sku' => $sku,
                 'category_id' => (int) $categoryId,
                 'buying_price' => '0.00',
-                'selling_price' => (string) number_format((float) $item->unit_price, 2, '.', ''),
+                'selling_price' => (string) number_format($sellingPrice, 2, '.', ''),
                 'track_quantity' => false,
             ],
         ];

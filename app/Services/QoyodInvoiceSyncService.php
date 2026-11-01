@@ -330,8 +330,9 @@ class QoyodInvoiceSyncService
                     'q[phone_eq]' => $phone,
                 ]);
 
-            if ($search->successful() && ! empty($search->json('customers')[0]['id'])) {
-                return (int) $search->json('customers')[0]['id'];
+            $foundId = $search->json('customers.0.id') ?? $search->json('contacts.0.id') ?? $search->json('0.id');
+            if ($search->successful() && ! empty($foundId)) {
+                return (int) $foundId;
             }
         }
 
@@ -343,8 +344,9 @@ class QoyodInvoiceSyncService
                     'q[email_eq]' => $email,
                 ]);
 
-            if ($search->successful() && ! empty($search->json('customers')[0]['id'])) {
-                return (int) $search->json('customers')[0]['id'];
+            $foundId = $search->json('customers.0.id') ?? $search->json('contacts.0.id') ?? $search->json('0.id');
+            if ($search->successful() && ! empty($foundId)) {
+                return (int) $foundId;
             }
         }
 
@@ -355,8 +357,9 @@ class QoyodInvoiceSyncService
                 'q[name_eq]' => $name,
             ]);
 
-        if ($searchName->successful() && ! empty($searchName->json('customers')[0]['id'])) {
-            return (int) $searchName->json('customers')[0]['id'];
+        $foundId = $searchName->json('customers.0.id') ?? $searchName->json('contacts.0.id') ?? $searchName->json('0.id');
+        if ($searchName->successful() && ! empty($foundId)) {
+            return (int) $foundId;
         }
 
         $searchContactName = Http::withHeaders($headers)
@@ -365,14 +368,16 @@ class QoyodInvoiceSyncService
                 'q[contact_name_eq]' => $name,
             ]);
 
-        if ($searchContactName->successful() && ! empty($searchContactName->json('customers')[0]['id'])) {
-            return (int) $searchContactName->json('customers')[0]['id'];
+        $foundId = $searchContactName->json('customers.0.id') ?? $searchContactName->json('contacts.0.id') ?? $searchContactName->json('0.id');
+        if ($searchContactName->successful() && ! empty($foundId)) {
+            return (int) $foundId;
         }
 
         // 4. Create new customer profile in Qoyod
         $customerData = [
             'name' => $name,
             'contact_name' => $name,
+            'organization_name' => $name,
         ];
 
         if (! empty($phone)) {
@@ -394,14 +399,42 @@ class QoyodInvoiceSyncService
             $customerData['city'] = $city;
         }
 
+        $address = $order->shipment_address['address1'] ?? $order->invoice_address['address1'] ?? null;
+        if (! empty($address)) {
+            $customerData['address'] = $address;
+        }
+
+        // Wrap under both 'contact' and 'customer' to support all Qoyod controller parameter requirements
+        $customerPayload = [
+            'contact' => $customerData,
+            'customer' => $customerData,
+        ];
+
         $createResponse = Http::withHeaders($headers)
             ->timeout(10)
-            ->post("{$this->baseUrl}/customers", [
-                'customer' => $customerData,
-            ]);
+            ->post("{$this->baseUrl}/customers", $customerPayload);
 
-        if ($createResponse->successful() && ! empty($createResponse->json('customer')['id'])) {
-            return (int) $createResponse->json('customer')['id'];
+        $createdId = $createResponse->json('contact.id')
+            ?? $createResponse->json('customer.id')
+            ?? $createResponse->json('id');
+
+        if ($createResponse->successful() && ! empty($createdId)) {
+            return (int) $createdId;
+        }
+
+        // Attempt /contacts endpoint if /customers failed
+        if (! $createResponse->successful()) {
+            $createContactResponse = Http::withHeaders($headers)
+                ->timeout(10)
+                ->post("{$this->baseUrl}/contacts", $customerPayload);
+
+            $contactEndpointId = $createContactResponse->json('contact.id')
+                ?? $createContactResponse->json('customer.id')
+                ?? $createContactResponse->json('id');
+
+            if ($createContactResponse->successful() && ! empty($contactEndpointId)) {
+                return (int) $contactEndpointId;
+            }
         }
 
         // 5. Fallback: Search customer by name or contact_name contains if creation was rejected (e.g. name duplicate)
@@ -411,8 +444,9 @@ class QoyodInvoiceSyncService
                 'q[name_cont]' => $name,
             ]);
 
-        if ($searchFallback->successful() && ! empty($searchFallback->json('customers')[0]['id'])) {
-            return (int) $searchFallback->json('customers')[0]['id'];
+        $foundId = $searchFallback->json('customers.0.id') ?? $searchFallback->json('contacts.0.id') ?? $searchFallback->json('0.id');
+        if ($searchFallback->successful() && ! empty($foundId)) {
+            return (int) $foundId;
         }
 
         $searchFallbackContact = Http::withHeaders($headers)
@@ -421,8 +455,9 @@ class QoyodInvoiceSyncService
                 'q[contact_name_cont]' => $name,
             ]);
 
-        if ($searchFallbackContact->successful() && ! empty($searchFallbackContact->json('customers')[0]['id'])) {
-            return (int) $searchFallbackContact->json('customers')[0]['id'];
+        $foundId = $searchFallbackContact->json('customers.0.id') ?? $searchFallbackContact->json('contacts.0.id') ?? $searchFallbackContact->json('0.id');
+        if ($searchFallbackContact->successful() && ! empty($foundId)) {
+            return (int) $foundId;
         }
 
         // Never assign to an arbitrary first customer! Log and throw clear error
@@ -430,7 +465,7 @@ class QoyodInvoiceSyncService
         $errorDetails = is_array($errorResponse) ? json_encode($errorResponse, JSON_UNESCAPED_UNICODE) : (string) $errorResponse;
 
         Log::error("Failed to create customer '{$name}' in Qoyod for order {$order->order_number}", [
-            'payload' => $customerData,
+            'payload' => $customerPayload,
             'response' => $errorResponse,
         ]);
 

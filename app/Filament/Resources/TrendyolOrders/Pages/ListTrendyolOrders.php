@@ -19,6 +19,36 @@ class ListTrendyolOrders extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('sync_recent_orders')
+                ->label('تحديث وجلب الطلبات الجديدة')
+                ->icon('heroicon-m-arrow-path')
+                ->color('success')
+                ->action(function (TrendyolOrderSyncService $syncService) {
+                    try {
+                        $result = $syncService->syncOrders(maxPages: 5, pageSize: 50);
+
+                        if ($result['success']) {
+                            Notification::make()
+                                ->title('تم تحديث وجلب الطلبات بنجاح')
+                                ->body("تم الاتصال بترينديول: تم إضافة {$result['created']} طلب جديد، وتحديث {$result['updated']} طلب موجود (إجمالي المستلم: {$result['total_fetched']}).")
+                                ->success()
+                                ->send();
+                        } else {
+                            Notification::make()
+                                ->title('حدثت مشكلة أثناء السحب')
+                                ->body(implode("\n", array_slice($result['errors'], 0, 3)))
+                                ->warning()
+                                ->send();
+                        }
+                    } catch (Throwable $e) {
+                        Notification::make()
+                            ->title('فشل تحديث أحدث الطلبات')
+                            ->body($e->getMessage())
+                            ->danger()
+                            ->send();
+                    }
+                }),
+
             Action::make('sync_by_date_range')
                 ->label('مزامنة حسب الفترة (من تاريخ إلى تاريخ)')
                 ->icon('heroicon-m-calendar-days')
@@ -108,36 +138,6 @@ class ListTrendyolOrders extends ListRecords
                     } catch (Throwable $e) {
                         Notification::make()
                             ->title('تعذر إتمام المزامنة للفترة المحددة')
-                            ->body($e->getMessage())
-                            ->danger()
-                            ->send();
-                    }
-                }),
-
-            Action::make('sync_recent_orders')
-                ->label('مزامنة سريعة (أحدث الطلبات)')
-                ->icon('heroicon-m-arrow-path')
-                ->color('gray')
-                ->action(function (TrendyolOrderSyncService $syncService) {
-                    try {
-                        $result = $syncService->syncOrders(maxPages: 1, pageSize: 50);
-
-                        if ($result['success']) {
-                            Notification::make()
-                                ->title('تم سحب أحدث الطلبات بنجاح')
-                                ->body("تم جلب {$result['total_fetched']} طلب (إضافة {$result['created']} جديد، وتحديث {$result['updated']}).")
-                                ->success()
-                                ->send();
-                        } else {
-                            Notification::make()
-                                ->title('حدثت مشكلة أثناء السحب')
-                                ->body(implode("\n", array_slice($result['errors'], 0, 3)))
-                                ->warning()
-                                ->send();
-                        }
-                    } catch (Throwable $e) {
-                        Notification::make()
-                            ->title('فشل سحب أحدث الطلبات')
                             ->body($e->getMessage())
                             ->danger()
                             ->send();

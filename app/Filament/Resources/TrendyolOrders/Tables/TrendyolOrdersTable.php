@@ -156,6 +156,37 @@ class TrendyolOrdersTable
                     }),
             ])
             ->toolbarActions([
+                Action::make('sync_new_trendyol_orders')
+                    ->label('تحديث وجلب الطلبات الجديدة')
+                    ->icon('heroicon-o-arrow-path')
+                    ->color('success')
+                    ->action(function () {
+                        $syncService = app(\App\Services\TrendyolOrderSyncService::class);
+                        try {
+                            $result = $syncService->syncOrders(maxPages: 5, pageSize: 50);
+
+                            if ($result['success']) {
+                                Notification::make()
+                                    ->title('اكتمل تحديث الطلبات من ترينديول')
+                                    ->body("تم فحص ترينديول بنجاح: تم إضافة {$result['created']} طلب جديد، وتحديث {$result['updated']} طلب موجود (إجمالي المستلم: {$result['total_fetched']}).")
+                                    ->success()
+                                    ->send();
+                            } else {
+                                Notification::make()
+                                    ->title('حدثت مشكلة أثناء جلب الطلبات')
+                                    ->body(implode("\n", array_slice($result['errors'], 0, 3)))
+                                    ->warning()
+                                    ->send();
+                            }
+                        } catch (\Throwable $e) {
+                            Notification::make()
+                                ->title('فشل تحديث الطلبات من ترينديول')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    }),
+
                 BulkActionGroup::make([
                     BulkAction::make('bulk_sync_to_qoyod')
                         ->label('إعادة إرسال الطلبات المحددة لقيود')

@@ -149,6 +149,7 @@ class QoyodInvoiceSyncService
                 'reference' => $reference,
                 'description' => "فاتورة طلب ترينديول رقم: {$order->order_number}",
                 'status' => 'Approved',
+                'is_inclusive' => true,
                 'line_items' => $lineItems,
             ];
 
@@ -529,6 +530,7 @@ class QoyodInvoiceSyncService
                 'tax_percent' => $vatRate,
                 'discount' => number_format(max(0, $discount), 2, '.', ''),
                 'discount_type' => 'amount',
+                'is_inclusive' => true,
             ];
 
             if ($productId) {
@@ -584,7 +586,7 @@ class QoyodInvoiceSyncService
         $sellingPrice = (float) $item->unit_price + ($discount > 0 ? ($discount / $quantity) : 0);
 
         $productPayload = [
-            'product' => [
+            'product' => [ 
                 'name_ar' => $name,
                 'name_en' => $sku ?: $name,
                 'sku' => $sku,

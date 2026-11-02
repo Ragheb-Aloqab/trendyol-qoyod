@@ -41,6 +41,11 @@ class EditProfile extends BaseEditProfile
         return \Filament\Support\Enums\Width::SevenExtraLarge;
     }
 
+    public function getMaxContentWidth(): \Filament\Support\Enums\Width | string | null
+    {
+        return \Filament\Support\Enums\Width::SevenExtraLarge;
+    }
+
     public function form(Schema $schema): Schema
     {
         return $schema

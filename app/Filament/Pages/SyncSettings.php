@@ -6,6 +6,7 @@ use App\Models\AppSetting;
 use BackedEnum;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Support\Enums\Width;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Contracts\Support\Htmlable;
 use UnitEnum;
@@ -21,6 +22,11 @@ class SyncSettings extends Page
     protected static ?int $navigationSort = 3;
 
     protected string $view = 'filament.pages.sync-settings';
+
+    public function getMaxContentWidth(): Width|string|null
+    {
+        return Width::Full;
+    }
 
     public bool $auto_sync_enabled = true;
 

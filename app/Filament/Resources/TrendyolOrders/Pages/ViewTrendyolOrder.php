@@ -8,10 +8,27 @@ use App\Models\TrendyolOrder;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
+use Filament\Support\Enums\Width;
+use Illuminate\Contracts\Support\Htmlable;
 
 class ViewTrendyolOrder extends ViewRecord
 {
     protected static string $resource = TrendyolOrderResource::class;
+
+    public function getMaxContentWidth(): Width|string|null
+    {
+        return Width::Full;
+    }
+
+    public function getTitle(): string|Htmlable
+    {
+        return "تفاصيل طلب ترينديول رقم #{$this->record->order_number}";
+    }
+
+    public function getSubheading(): ?string
+    {
+        return "تاريخ الطلب: " . ($this->record->order_date ? $this->record->order_date->format('Y-m-d H:i') : '-') . " | العميل: {$this->record->customer_full_name} | إجمالي المبلغ: {$this->record->gross_amount} {$this->record->currency}";
+    }
 
     protected function getHeaderActions(): array
     {

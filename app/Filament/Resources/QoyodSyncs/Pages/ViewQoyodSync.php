@@ -7,10 +7,29 @@ use App\Models\QoyodSync;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
+use Filament\Support\Enums\Width;
+use Illuminate\Contracts\Support\Htmlable;
 
 class ViewQoyodSync extends ViewRecord
 {
     protected static string $resource = QoyodSyncResource::class;
+
+    public function getMaxContentWidth(): Width|string|null
+    {
+        return Width::Full;
+    }
+
+    public function getTitle(): string|Htmlable
+    {
+        return "تفاصيل سجل مزامنة قيود #{$this->record->id}";
+    }
+
+    public function getSubheading(): ?string
+    {
+        $orderNum = $this->record->order?->order_number ?? 'غير محدد';
+        $type = $this->record->type === 'invoice' ? 'فاتورة مبيعات' : 'إشعار دائن';
+        return "نوع المستند: {$type} | طلب ترينديول رقم: #{$orderNum}";
+    }
 
     protected function getHeaderActions(): array
     {

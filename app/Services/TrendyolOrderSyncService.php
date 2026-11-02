@@ -48,12 +48,10 @@ class TrendyolOrderSyncService
             throw new Exception('بيانات اتصال ترينديول غير مكتملة في ملف .env (Supplier ID, API Key, API Secret)');
         }
 
-        if (empty($startDate)) {
-            $startDate = \App\Models\AppSetting::get('sync_start_date', config('services.trendyol.sync_start_date', '2026-10-01'));
-        }
-
-        $startEpoch = $this->normalizeToMilliseconds($startDate, isEndOfDay: false);
-        $endEpoch = $this->normalizeToMilliseconds($endDate, isEndOfDay: true);
+        // إذا لم يُحدد تاريخ بداية (مثل جلب أحدث الطلبات)، لا نرسل startDate لترينديول
+        // حتى تعيد ترينديول أحدث وأجدد الطلبات النشطة تنازلياً (واليومية) بدلاً من حصرها في نافذة 14 يوماً قديمة
+        $startEpoch = !empty($startDate) ? $this->normalizeToMilliseconds($startDate, isEndOfDay: false) : null;
+        $endEpoch = !empty($endDate) ? $this->normalizeToMilliseconds($endDate, isEndOfDay: true) : null;
 
         $totalFetched = 0;
         $createdCount = 0;

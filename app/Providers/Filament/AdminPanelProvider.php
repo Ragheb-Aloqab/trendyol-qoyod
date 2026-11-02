@@ -33,6 +33,11 @@ class AdminPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Amber,
             ])
+            ->maxContentWidth(\Filament\Support\Enums\Width::Full)
+            ->renderHook(
+                \Filament\View\PanelsRenderHook::HEAD_END,
+                fn (): string => view('filament.custom-styles')->render(),
+            )
             ->sidebarCollapsibleOnDesktop()
             ->collapsibleNavigationGroups()
             ->profile(\App\Filament\Pages\Auth\EditProfile::class, isSimple: false)

@@ -37,10 +37,12 @@ class TrendyolOrdersTable
 
                 TextColumn::make('customer_full_name')
                     ->label('اسم العميل')
-                    ->searchable(['customer_first_name', 'customer_last_name']),
+                    ->searchable(['customer_first_name', 'customer_last_name'])
+                    ->limit(22)
+                    ->tooltip(fn (TrendyolOrder $record): ?string => $record->customer_full_name),
 
                 TextColumn::make('status')
-                    ->label('حالة الطلب في ترينديول')
+                    ->label('حالة ترينديول')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
                         'Delivered' => 'success',
@@ -69,7 +71,7 @@ class TrendyolOrdersTable
                     ->sortable(),
 
                 TextColumn::make('invoiceSync.status')
-                    ->label('حالة المزامنة في قيود')
+                    ->label('مزامنة قيود')
                     ->badge()
                     ->color(fn (?string $state): string => match ($state) {
                         'success' => 'success',
@@ -82,11 +84,13 @@ class TrendyolOrdersTable
                         'pending' => 'قيد الانتظار',
                         'failed' => 'فشلت',
                         default => 'غير مزامن',
-                    }),
+                    })
+                    ->default('not_synced'),
 
                 TextColumn::make('order_date')
-                    ->label('تاريخ الطلب')
-                    ->dateTime('Y-m-d H:i')
+                    ->label('التاريخ')
+                    ->date('Y-m-d')
+                    ->description(fn (TrendyolOrder $record): ?string => $record->order_date?->format('H:i'))
                     ->sortable(),
             ])
             ->filters([
@@ -124,11 +128,13 @@ class TrendyolOrdersTable
             ])
             ->recordActions([
                 ViewAction::make()
-                    ->label('عرض التفاصيل'),
+                    ->iconButton()
+                    ->tooltip('عرض تفاصيل الطلب'),
 
                 Action::make('sync_to_qoyod')
-                    ->label(fn (TrendyolOrder $record): string => $record->invoiceSync?->status === QoyodSync::STATUS_SUCCESS ? 'إعادة الإرسال لقيود' : 'إرسال لقيود الآن')
+                    ->iconButton()
                     ->icon('heroicon-o-paper-airplane')
+                    ->tooltip(fn (TrendyolOrder $record): string => $record->invoiceSync?->status === QoyodSync::STATUS_SUCCESS ? 'إعادة الإرسال لقيود' : 'إرسال لقيود الآن')
                     ->color(fn (TrendyolOrder $record): string => $record->invoiceSync?->status === QoyodSync::STATUS_SUCCESS ? 'gray' : 'primary')
                     ->requiresConfirmation()
                     ->modalHeading(fn (TrendyolOrder $record): string => $record->invoiceSync?->status === QoyodSync::STATUS_SUCCESS ? 'إعادة إرسال الفاتورة لقيود وإنشاء فاتورة جديدة' : 'إرسال الفاتورة إلى قيود الآن')
@@ -155,38 +161,7 @@ class TrendyolOrdersTable
                         }
                     }),
             ])
-            ->toolbarActions([
-                Action::make('sync_new_trendyol_orders')
-                    ->label('تحديث وجلب الطلبات الجديدة')
-                    ->icon('heroicon-o-arrow-path')
-                    ->color('success')
-                    ->action(function () {
-                        $syncService = app(\App\Services\TrendyolOrderSyncService::class);
-                        try {
-                            $result = $syncService->syncOrders(maxPages: 5, pageSize: 50);
-
-                            if ($result['success']) {
-                                Notification::make()
-                                    ->title('اكتمل تحديث الطلبات من ترينديول')
-                                    ->body("تم فحص ترينديول بنجاح: تم إضافة {$result['created']} طلب جديد، وتحديث {$result['updated']} طلب موجود (إجمالي المستلم: {$result['total_fetched']}).")
-                                    ->success()
-                                    ->send();
-                            } else {
-                                Notification::make()
-                                    ->title('حدثت مشكلة أثناء جلب الطلبات')
-                                    ->body(implode("\n", array_slice($result['errors'], 0, 3)))
-                                    ->warning()
-                                    ->send();
-                            }
-                        } catch (\Throwable $e) {
-                            Notification::make()
-                                ->title('فشل تحديث الطلبات من ترينديول')
-                                ->body($e->getMessage())
-                                ->danger()
-                                ->send();
-                        }
-                    }),
-
+            ->bulkActions([
                 BulkActionGroup::make([
                     BulkAction::make('bulk_sync_to_qoyod')
                         ->label('إعادة إرسال الطلبات المحددة لقيود')
@@ -229,44 +204,6 @@ class TrendyolOrdersTable
                             }
                         }),
                 ]),
-
-                Action::make('resync_all_synced_invoices')
-                    ->label('إعادة مزامنة كافة الفواتير المحذوفة من قيود')
-                    ->icon('heroicon-o-arrow-path')
-                    ->color('warning')
-                    ->requiresConfirmation()
-                    ->modalHeading('إعادة مزامنة كافة الفواتير التي تمت مزامنتها مسبقاً')
-                    ->modalDescription('سيتم فحص كافة الطلبات المسجلة كـ "تمت المزامنة" وإنشاء فواتير مبيعات جديدة لها في قيود بالبيانات والأسعار والضرائب المحدثة. هل تريد المتابعة؟')
-                    ->modalSubmitActionLabel('نعم، ابدأ إعادة المزامنة')
-                    ->modalCancelActionLabel('إلغاء')
-                    ->action(function () {
-                        $qoyodService = app(\App\Services\QoyodInvoiceSyncService::class);
-                        $result = $qoyodService->resyncAllSyncedInvoices(100);
-
-                        if ($result['processed'] === 0) {
-                            Notification::make()
-                                ->title('لا توجد فواتير')
-                                ->body('لم يتم العثور على أي طلبات مسجلة كـ "تمت المزامنة".')
-                                ->info()
-                                ->send();
-                            return;
-                        }
-
-                        if ($result['failed'] === 0) {
-                            Notification::make()
-                                ->title('اكتملت إعادة المزامنة بنجاح')
-                                ->body("تم إنشاء وإرسال {$result['success']} فاتورة جديدة إلى قيود بنجاح.")
-                                ->success()
-                                ->send();
-                        } else {
-                            Notification::make()
-                                ->title("اكتملت العملية: {$result['success']} ناجحة، {$result['failed']} فاشلة")
-                                ->body(implode("\n", array_slice($result['errors'], 0, 3)))
-                                ->warning()
-                                ->persistent()
-                                ->send();
-                        }
-                    }),
             ]);
     }
 }

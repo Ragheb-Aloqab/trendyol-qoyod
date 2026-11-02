@@ -10,11 +10,27 @@ use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Schemas\Components\Grid;
+use Filament\Support\Enums\Width;
 use Throwable;
 
 class ListTrendyolOrders extends ListRecords
 {
     protected static string $resource = TrendyolOrderResource::class;
+
+    public function getMaxContentWidth(): Width|string|null
+    {
+        return Width::Full;
+    }
+
+    public function getTitle(): string|\Illuminate\Contracts\Support\Htmlable
+    {
+        return 'إدارة ومزامنة طلبات ترينديول';
+    }
+
+    public function getSubheading(): ?string
+    {
+        return 'متابعة وسحب طلبات متجر ترينديول وإصدار فواتير المبيعات الإلكترونية تلقائياً في نظام قيود المحاسبي.';
+    }
 
     protected function getHeaderActions(): array
     {
@@ -175,6 +191,44 @@ class ListTrendyolOrders extends ListRecords
                             ->title('تعذر الاتصال بخوادم ترينديول')
                             ->body($e->getMessage())
                             ->danger()
+                            ->send();
+                    }
+                }),
+
+            Action::make('resync_all_synced_invoices')
+                ->label('إعادة مزامنة فواتير قيود المحذوفة')
+                ->icon('heroicon-m-arrow-path')
+                ->color('gray')
+                ->requiresConfirmation()
+                ->modalHeading('إعادة مزامنة كافة الفواتير التي تمت مزامنتها مسبقاً')
+                ->modalDescription('سيتم فحص كافة الطلبات المسجلة كـ "تمت المزامنة" وإنشاء فواتير مبيعات جديدة لها في قيود بالبيانات والأسعار والضرائب المحدثة. هل تريد المتابعة؟')
+                ->modalSubmitActionLabel('نعم، ابدأ إعادة المزامنة')
+                ->modalCancelActionLabel('إلغاء')
+                ->action(function () {
+                    $qoyodService = app(\App\Services\QoyodInvoiceSyncService::class);
+                    $result = $qoyodService->resyncAllSyncedInvoices(100);
+
+                    if ($result['processed'] === 0) {
+                        Notification::make()
+                            ->title('لا توجد فواتير')
+                            ->body('لم يتم العثور على أي طلبات مسجلة كـ "تمت المزامنة".')
+                            ->info()
+                            ->send();
+                        return;
+                    }
+
+                    if ($result['failed'] === 0) {
+                        Notification::make()
+                            ->title('اكتملت إعادة المزامنة بنجاح')
+                            ->body("تم إنشاء وإرسال {$result['success']} فاتورة جديدة إلى قيود بنجاح.")
+                            ->success()
+                            ->send();
+                    } else {
+                        Notification::make()
+                            ->title("اكتملت العملية: {$result['success']} ناجحة، {$result['failed']} فاشلة")
+                            ->body(implode("\n", array_slice($result['errors'], 0, 3)))
+                            ->warning()
+                            ->persistent()
                             ->send();
                     }
                 }),

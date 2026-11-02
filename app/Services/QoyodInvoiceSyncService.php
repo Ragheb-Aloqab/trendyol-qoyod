@@ -37,7 +37,7 @@ class QoyodInvoiceSyncService
         }
 
         $order = $sync->order;
-        if (! $order) {
+        if (!$order) {
             $error = 'سجل الطلب المرتبط بعملية المزامنة غير موجود';
             $sync->markAsFailed($error);
             return ['success' => false, 'error' => $error];
@@ -45,7 +45,7 @@ class QoyodInvoiceSyncService
 
         // منع إرسال الفاتورة لقيود إن كان الطلب قبل تاريخ بدء المزامنة المعتمد (شهر 10)
         $startDate = \App\Models\AppSetting::get('sync_start_date', config('services.trendyol.sync_start_date', '2026-10-01'));
-        if ($order->order_date && ! empty($startDate)) {
+        if ($order->order_date && !empty($startDate)) {
             $parsedStart = \Illuminate\Support\Carbon::parse($startDate)->startOfDay();
             if ($order->order_date->lt($parsedStart)) {
                 $error = "تم منع المزامنة: تاريخ الطلب ({$order->order_date->format('Y-m-d')}) يسبق تاريخ بدء المزامنة المعتمد ({$startDate}).";
@@ -72,7 +72,7 @@ class QoyodInvoiceSyncService
 
         try {
             // 1. Idempotency Check: Verify if invoice already exists in Qoyod by order number reference
-            if (! $force) {
+            if (!$force) {
                 $existingCheck = Http::withHeaders($headers)
                     ->timeout(10)
                     ->get("{$this->baseUrl}/invoices", [
@@ -81,7 +81,7 @@ class QoyodInvoiceSyncService
 
                 if ($existingCheck->successful()) {
                     $invoices = $existingCheck->json('invoices') ?? [];
-                    if (! empty($invoices[0]['id'])) {
+                    if (!empty($invoices[0]['id'])) {
                         $existingInvoice = $invoices[0];
                         $qoyodId = (string) $existingInvoice['id'];
 
@@ -99,7 +99,7 @@ class QoyodInvoiceSyncService
                 }
 
                 // Also check old reference format (TY-shipment_package_id) if exists to avoid duplicate invoices
-                if (! empty($order->shipment_package_id)) {
+                if (!empty($order->shipment_package_id)) {
                     $oldPackageRef = 'TY-' . $order->shipment_package_id;
                     $oldCheck = Http::withHeaders($headers)
                         ->timeout(10)
@@ -109,7 +109,7 @@ class QoyodInvoiceSyncService
 
                     if ($oldCheck->successful()) {
                         $invoices = $oldCheck->json('invoices') ?? [];
-                        if (! empty($invoices[0]['id'])) {
+                        if (!empty($invoices[0]['id'])) {
                             $existingInvoice = $invoices[0];
                             $qoyodId = (string) $existingInvoice['id'];
 
@@ -135,7 +135,7 @@ class QoyodInvoiceSyncService
             $inventoryId = $this->resolveInventoryId($headers);
 
             // 4. Build Line Items
-            $lineItems = $this->buildLineItems($order, $headers);
+            $lineItems = $this->buildLineItems($order, $headers, $inventoryId);
 
             if (empty($lineItems)) {
                 throw new Exception('لا توجد أصناف أو منتجات مسجلة في هذا الطلب لإنشاء الفاتورة');
@@ -155,7 +155,7 @@ class QoyodInvoiceSyncService
                 'line_items' => $lineItems,
             ];
 
-            if (! empty($inventoryId)) {
+            if (!empty($inventoryId)) {
                 $invoiceData['inventory_id'] = (int) $inventoryId;
             }
 
@@ -263,7 +263,7 @@ class QoyodInvoiceSyncService
      */
     public function resyncAllSyncedInvoices(int $limit = 100, bool $force = false): array
     {
-        $syncedOrders = TrendyolOrder::whereHas('invoiceSync', fn ($q) => $q->where('status', QoyodSync::STATUS_SUCCESS))
+        $syncedOrders = TrendyolOrder::whereHas('invoiceSync', fn($q) => $q->where('status', QoyodSync::STATUS_SUCCESS))
             ->take($limit)
             ->get();
 
@@ -335,7 +335,7 @@ class QoyodInvoiceSyncService
     protected function resolveContactId(TrendyolOrder $order, array $headers): int
     {
         $name = trim($order->customer_full_name);
-        if (empty($name) && ! empty($order->shipment_address['firstName'])) {
+        if (empty($name) && !empty($order->shipment_address['firstName'])) {
             $name = trim(($order->shipment_address['firstName'] ?? '') . ' ' . ($order->shipment_address['lastName'] ?? ''));
         }
         if (empty($name)) {
@@ -343,7 +343,7 @@ class QoyodInvoiceSyncService
         }
 
         $phone = trim($order->customer_phone ?? '');
-        if (empty($phone) && ! empty($order->shipment_address['phone'])) {
+        if (empty($phone) && !empty($order->shipment_address['phone'])) {
             $phone = trim($order->shipment_address['phone']);
         }
 
@@ -351,7 +351,7 @@ class QoyodInvoiceSyncService
 
         // Validate VAT / Tax Number (Must be 15 digits starting and ending with 3 for ZATCA)
         $taxNumber = null;
-        if (! empty($order->tax_number)) {
+        if (!empty($order->tax_number)) {
             $cleaned = preg_replace('/[^0-9]/', '', (string) $order->tax_number);
             if (strlen($cleaned) === 15 && str_starts_with($cleaned, '3') && str_ends_with($cleaned, '3')) {
                 $taxNumber = $cleaned;
@@ -359,7 +359,7 @@ class QoyodInvoiceSyncService
         }
 
         // 1. Search existing customer by phone
-        if (! empty($phone)) {
+        if (!empty($phone)) {
             $search = Http::withHeaders($headers)
                 ->timeout(10)
                 ->get("{$this->baseUrl}/customers", [
@@ -367,13 +367,13 @@ class QoyodInvoiceSyncService
                 ]);
 
             $foundId = $search->json('customers.0.id') ?? $search->json('contacts.0.id') ?? $search->json('0.id');
-            if ($search->successful() && ! empty($foundId)) {
+            if ($search->successful() && !empty($foundId)) {
                 return (int) $foundId;
             }
         }
 
         // 2. Search existing customer by email
-        if (! empty($email) && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        if (!empty($email) && filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $search = Http::withHeaders($headers)
                 ->timeout(10)
                 ->get("{$this->baseUrl}/customers", [
@@ -381,7 +381,7 @@ class QoyodInvoiceSyncService
                 ]);
 
             $foundId = $search->json('customers.0.id') ?? $search->json('contacts.0.id') ?? $search->json('0.id');
-            if ($search->successful() && ! empty($foundId)) {
+            if ($search->successful() && !empty($foundId)) {
                 return (int) $foundId;
             }
         }
@@ -394,7 +394,7 @@ class QoyodInvoiceSyncService
             ]);
 
         $foundId = $searchName->json('customers.0.id') ?? $searchName->json('contacts.0.id') ?? $searchName->json('0.id');
-        if ($searchName->successful() && ! empty($foundId)) {
+        if ($searchName->successful() && !empty($foundId)) {
             return (int) $foundId;
         }
 
@@ -405,7 +405,7 @@ class QoyodInvoiceSyncService
             ]);
 
         $foundId = $searchContactName->json('customers.0.id') ?? $searchContactName->json('contacts.0.id') ?? $searchContactName->json('0.id');
-        if ($searchContactName->successful() && ! empty($foundId)) {
+        if ($searchContactName->successful() && !empty($foundId)) {
             return (int) $foundId;
         }
 
@@ -416,27 +416,27 @@ class QoyodInvoiceSyncService
             'organization_name' => $name,
         ];
 
-        if (! empty($phone)) {
+        if (!empty($phone)) {
             $customerData['phone'] = $phone;
             $customerData['phone_number'] = $phone;
         }
 
-        if (! empty($email) && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        if (!empty($email) && filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $customerData['email'] = $email;
         }
 
-        if (! empty($taxNumber)) {
+        if (!empty($taxNumber)) {
             $customerData['tax_number'] = $taxNumber;
             $customerData['vat_number'] = $taxNumber;
         }
 
         $city = $order->shipment_address['city'] ?? $order->invoice_address['city'] ?? null;
-        if (! empty($city)) {
+        if (!empty($city)) {
             $customerData['city'] = $city;
         }
 
         $address = $order->shipment_address['address1'] ?? $order->invoice_address['address1'] ?? null;
-        if (! empty($address)) {
+        if (!empty($address)) {
             $customerData['address'] = $address;
         }
 
@@ -454,12 +454,12 @@ class QoyodInvoiceSyncService
             ?? $createResponse->json('customer.id')
             ?? $createResponse->json('id');
 
-        if ($createResponse->successful() && ! empty($createdId)) {
+        if ($createResponse->successful() && !empty($createdId)) {
             return (int) $createdId;
         }
 
         // Attempt /contacts endpoint if /customers failed
-        if (! $createResponse->successful()) {
+        if (!$createResponse->successful()) {
             $createContactResponse = Http::withHeaders($headers)
                 ->timeout(10)
                 ->post("{$this->baseUrl}/contacts", $customerPayload);
@@ -468,7 +468,7 @@ class QoyodInvoiceSyncService
                 ?? $createContactResponse->json('customer.id')
                 ?? $createContactResponse->json('id');
 
-            if ($createContactResponse->successful() && ! empty($contactEndpointId)) {
+            if ($createContactResponse->successful() && !empty($contactEndpointId)) {
                 return (int) $contactEndpointId;
             }
         }
@@ -481,7 +481,7 @@ class QoyodInvoiceSyncService
             ]);
 
         $foundId = $searchFallback->json('customers.0.id') ?? $searchFallback->json('contacts.0.id') ?? $searchFallback->json('0.id');
-        if ($searchFallback->successful() && ! empty($foundId)) {
+        if ($searchFallback->successful() && !empty($foundId)) {
             return (int) $foundId;
         }
 
@@ -492,7 +492,7 @@ class QoyodInvoiceSyncService
             ]);
 
         $foundId = $searchFallbackContact->json('customers.0.id') ?? $searchFallbackContact->json('contacts.0.id') ?? $searchFallbackContact->json('0.id');
-        if ($searchFallbackContact->successful() && ! empty($foundId)) {
+        if ($searchFallbackContact->successful() && !empty($foundId)) {
             return (int) $foundId;
         }
 
@@ -513,7 +513,7 @@ class QoyodInvoiceSyncService
      */
     protected function resolveInventoryId(array $headers): ?int
     {
-        if (! empty($this->inventoryId) && is_numeric($this->inventoryId)) {
+        if (!empty($this->inventoryId) && is_numeric($this->inventoryId)) {
             return (int) $this->inventoryId;
         }
 
@@ -524,7 +524,7 @@ class QoyodInvoiceSyncService
 
         if ($response->successful()) {
             $inventories = $response->json('inventories') ?? [];
-            if (! empty($inventories[0]['id'])) {
+            if (!empty($inventories[0]['id'])) {
                 return (int) $inventories[0]['id'];
             }
         }
@@ -535,7 +535,7 @@ class QoyodInvoiceSyncService
     /**
      * Build invoice line items and resolve/create catalog products.
      */
-    protected function buildLineItems(TrendyolOrder $order, array $headers): array
+    protected function buildLineItems(TrendyolOrder $order, array $headers, ?int $inventoryId = null): array
     {
         $lineItems = [];
 
@@ -544,26 +544,22 @@ class QoyodInvoiceSyncService
 
             $quantity = max((float) ($item->quantity ?: 1), 1.0);
             $netUnitPrice = (float) $item->unit_price;
-            $discount = (float) ($item->discount ?: 0);
             $vatRate = (float) ($item->vat_rate ?: 15);
 
-            // سعر الوحدة قبل الخصم ليقوم قيود بخصم المبلغ المرسل والوصول للإجمالي الصحيح:
-            // Unit Price Before Discount = Net Unit Price + (Discount / Quantity)
-            $unitPriceBeforeDiscount = $netUnitPrice;
-            if ($discount > 0) {
-                $raw = is_array($item->raw_payload) ? $item->raw_payload : json_decode((string) ($item->raw_payload ?? ''), true);
-                if (! empty($raw['lineGrossAmount']) && (float) $raw['lineGrossAmount'] > 0) {
-                    $unitPriceBeforeDiscount = (float) $raw['lineGrossAmount'] / $quantity;
-                } else {
-                    $unitPriceBeforeDiscount = $netUnitPrice + ($discount / $quantity);
-                }
-            }
+            $raw = is_array($item->raw_payload) ? $item->raw_payload : json_decode((string) ($item->raw_payload ?? ''), true);
+            $grossUnitPrice = !empty($raw['lineGrossAmount']) ? (float) $raw['lineGrossAmount'] : (!empty($raw['amount']) ? (float) $raw['amount'] : ($netUnitPrice + (float) $item->discount));
+            $unitDiscount = !empty($raw['lineTotalDiscount']) ? (float) $raw['lineTotalDiscount'] : (!empty($raw['discount']) ? (float) $raw['discount'] : max(0, $grossUnitPrice - $netUnitPrice));
+            $totalLineDiscount = $unitDiscount * $quantity;
 
+            // الحل الجذري المحاسبي المعتمد:
+            // سعر الوحدة في قيود = سعر البيع الصافي الفعلي بعد الخصم المطابق لترينديول بالهللة (شامل الضريبة).
+            // والخصم يرسل 0.00 حتى لا يقوم قيود باقتطاع الضريبة منه (مثل تحويل 67.03 إلى 58.29).
+            // وتوثيق كامل تفاصيل السعر الأصلي والخصم بالريال في وصف الصنف للفاتورة والمحاسب.
             $line = [
                 'quantity' => $quantity,
-                'unit_price' => (float) number_format($unitPriceBeforeDiscount, 2, '.', ''),
+                'unit_price' => (float) number_format($netUnitPrice, 2, '.', ''),
                 'tax_percent' => $vatRate,
-                'discount' => number_format(max(0, $discount), 2, '.', ''),
+                'discount' => '0.00',
                 'discount_type' => 'amount',
                 'is_inclusive' => true,
             ];
@@ -572,13 +568,19 @@ class QoyodInvoiceSyncService
                 $line['product_id'] = $productId;
             }
 
+            if (!empty($inventoryId)) {
+                $line['inventory_id'] = (int) $inventoryId;
+            }
+
             $productName = $item->product_name ?: 'منتج ترينديول';
-            $formattedPrice = number_format($unitPriceBeforeDiscount, 2, '.', '');
-            if ($discount > 0) {
-                $formattedDiscount = number_format($discount, 2, '.', '');
-                $line['description'] = "{$productName} (سعر ترينديول شامل الضريبة: {$formattedPrice} ر.س | الخصم: {$formattedDiscount} ر.س)";
+            $formattedGross = number_format($grossUnitPrice, 2, '.', '');
+            $formattedNet = number_format($netUnitPrice, 2, '.', '');
+
+            if ($unitDiscount > 0) {
+                $formattedDiscount = number_format($totalLineDiscount, 2, '.', '');
+                $line['description'] = "{$productName} (سعر ترينديول الأصلي: {$formattedGross} ر.س | الخصم: {$formattedDiscount} ر.س | الصافي: {$formattedNet} ر.س)";
             } else {
-                $line['description'] = "{$productName} (سعر ترينديول شامل الضريبة: {$formattedPrice} ر.س)";
+                $line['description'] = "{$productName} (سعر ترينديول شامل الضريبة: {$formattedNet} ر.س)";
             }
 
             $lineItems[] = $line;
@@ -595,14 +597,14 @@ class QoyodInvoiceSyncService
         $sku = $item->merchant_sku ?: ($item->barcode ?: ('TY-' . $item->line_item_id));
 
         // 1. Search by SKU
-        if (! empty($sku)) {
+        if (!empty($sku)) {
             $search = Http::withHeaders($headers)
                 ->timeout(10)
                 ->get("{$this->baseUrl}/products", [
                     'q[sku_eq]' => $sku,
                 ]);
 
-            if ($search->successful() && ! empty($search->json('products')[0]['id'])) {
+            if ($search->successful() && !empty($search->json('products')[0]['id'])) {
                 return (int) $search->json('products')[0]['id'];
             }
         }
@@ -615,23 +617,23 @@ class QoyodInvoiceSyncService
                 'q[name_ar_eq]' => $name,
             ]);
 
-        if ($searchName->successful() && ! empty($searchName->json('products')[0]['id'])) {
+        if ($searchName->successful() && !empty($searchName->json('products')[0]['id'])) {
             return (int) $searchName->json('products')[0]['id'];
         }
 
         // 3. Auto-create product in Qoyod
         $categoryId = config('services.qoyod.default_category_id') ?: 1;
-        $quantity = max((float) ($item->quantity ?: 1), 1.0);
-        $discount = (float) ($item->discount ?: 0);
-        $sellingPrice = (float) $item->unit_price + ($discount > 0 ? ($discount / $quantity) : 0);
+        $sellingPrice = (float) $item->unit_price;
 
         $productPayload = [
-            'product' => [ 
+            'product' => [
                 'name_ar' => $name,
                 'name_en' => $sku ?: $name,
                 'sku' => $sku,
                 'category_id' => (int) $categoryId,
-                'buying_price' => '0.00',
+                'type' => 'Product',
+                'is_sold' => true,
+                'is_bought' => false,
                 'selling_price' => (string) number_format($sellingPrice, 2, '.', ''),
                 'track_quantity' => false,
             ],
@@ -641,19 +643,19 @@ class QoyodInvoiceSyncService
             ->timeout(10)
             ->post("{$this->baseUrl}/products", $productPayload);
 
-        if ($createResponse->successful() && ! empty($createResponse->json('product')['id'])) {
+        if ($createResponse->successful() && !empty($createResponse->json('product')['id'])) {
             return (int) $createResponse->json('product')['id'];
         }
 
         // 4. Search by contains if auto-creation failed
-        if (! empty($sku)) {
+        if (!empty($sku)) {
             $searchCont = Http::withHeaders($headers)
                 ->timeout(10)
                 ->get("{$this->baseUrl}/products", [
                     'q[sku_cont]' => $sku,
                 ]);
 
-            if ($searchCont->successful() && ! empty($searchCont->json('products')[0]['id'])) {
+            if ($searchCont->successful() && !empty($searchCont->json('products')[0]['id'])) {
                 return (int) $searchCont->json('products')[0]['id'];
             }
         }
@@ -663,7 +665,7 @@ class QoyodInvoiceSyncService
             ->timeout(10)
             ->get("{$this->baseUrl}/products", ['page' => 1]);
 
-        if ($fallback->successful() && ! empty($fallback->json('products')[0]['id'])) {
+        if ($fallback->successful() && !empty($fallback->json('products')[0]['id'])) {
             return (int) $fallback->json('products')[0]['id'];
         }
 

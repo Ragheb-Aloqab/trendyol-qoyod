@@ -551,15 +551,12 @@ class QoyodInvoiceSyncService
             $unitDiscount = !empty($raw['lineTotalDiscount']) ? (float) $raw['lineTotalDiscount'] : (!empty($raw['discount']) ? (float) $raw['discount'] : max(0, $grossUnitPrice - $netUnitPrice));
             $totalLineDiscount = $unitDiscount * $quantity;
 
-            // الحل الجذري المحاسبي المعتمد:
-            // سعر الوحدة في قيود = سعر البيع الصافي الفعلي بعد الخصم المطابق لترينديول بالهللة (شامل الضريبة).
-            // والخصم يرسل 0.00 حتى لا يقوم قيود باقتطاع الضريبة منه (مثل تحويل 67.03 إلى 58.29).
-            // وتوثيق كامل تفاصيل السعر الأصلي والخصم بالريال في وصف الصنف للفاتورة والمحاسب.
+            // إرسال السعر الأصلي شامل الضريبة مع إجمالي الخصم بدقة:
             $line = [
                 'quantity' => $quantity,
-                'unit_price' => (float) number_format($netUnitPrice, 2, '.', ''),
+                'unit_price' => (float) number_format($grossUnitPrice, 2, '.', ''),
                 'tax_percent' => $vatRate,
-                'discount' => '0.00',
+                'discount' => number_format(max(0, $totalLineDiscount), 2, '.', ''),
                 'discount_type' => 'amount',
                 'is_inclusive' => true,
             ];
@@ -574,13 +571,13 @@ class QoyodInvoiceSyncService
 
             $productName = $item->product_name ?: 'منتج ترينديول';
             $formattedGross = number_format($grossUnitPrice, 2, '.', '');
-            $formattedNet = number_format($netUnitPrice, 2, '.', '');
+            $formattedNet = number_format($netUnitPrice * $quantity, 2, '.', '');
+            $formattedDiscount = number_format($totalLineDiscount, 2, '.', '');
 
-            if ($unitDiscount > 0) {
-                $formattedDiscount = number_format($totalLineDiscount, 2, '.', '');
-                $line['description'] = "{$productName} (سعر ترينديول الأصلي: {$formattedGross} ر.س | الخصم: {$formattedDiscount} ر.س | الصافي: {$formattedNet} ر.س)";
+            if ($totalLineDiscount > 0) {
+                $line['description'] = "{$productName} (سعر ترينديول الأصلي: {$formattedGross} ر.س | الخصم: {$formattedDiscount} ر.س | الإجمالي بعد الخصم: {$formattedNet} ر.س)";
             } else {
-                $line['description'] = "{$productName} (سعر ترينديول شامل الضريبة: {$formattedNet} ر.س)";
+                $line['description'] = "{$productName} (سعر ترينديول شامل الضريبة: {$formattedGross} ر.س)";
             }
 
             $lineItems[] = $line;
@@ -623,7 +620,8 @@ class QoyodInvoiceSyncService
 
         // 3. Auto-create product in Qoyod
         $categoryId = config('services.qoyod.default_category_id') ?: 1;
-        $sellingPrice = (float) $item->unit_price;
+        $raw = is_array($item->raw_payload) ? $item->raw_payload : json_decode((string) ($item->raw_payload ?? ''), true);
+        $sellingPrice = !empty($raw['lineGrossAmount']) ? (float) $raw['lineGrossAmount'] : (!empty($raw['amount']) ? (float) $raw['amount'] : ((float) $item->unit_price + (float) $item->discount));
 
         $productPayload = [
             'product' => [

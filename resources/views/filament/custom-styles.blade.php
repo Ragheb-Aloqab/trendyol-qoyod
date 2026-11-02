@@ -1,23 +1,80 @@
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
 
     :root {
         --font-family-arabic: 'Cairo', system-ui, -apple-system, sans-serif;
     }
 
-    /* تطبيق خط Cairo الاحترافي مع دعم الأرقام الانجليزية الواضحة */
-    html, body, .fi-body, .fi-page, .fi-ta, .fi-sidebar {
+    /* 1. الخطوط والتايبوغرافي في كامل لوحة التحكم ولكافة الصفحات */
+    html, body, .fi-body, .fi-page, .fi-ta, .fi-sidebar, .fi-topbar, .fi-modal, .fi-section, input, select, textarea, button {
         font-family: var(--font-family-arabic) !important;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
     }
 
-    /* أرقام الطلبات والمبالغ بتنسيق أرقام أنيق ومقروء */
-    .fi-ta-text-item, .fi-ta-col, td, th {
+    /* الأرقام والمبالغ المادية بتنسيق هندسي فائق الوضوح */
+    .fi-ta-text-item, .fi-ta-col, td, th, .fi-stat-value, .tabular-nums {
         font-variant-numeric: tabular-nums;
+        font-family: 'Plus Jakarta Sans', var(--font-family-arabic) !important;
     }
 
-    /* تحسين تصميم بطاقة الجدول الرئيسية */
+    /* 2. شريط التنقل العلوي (Topbar) بتأثير الزجاج المصقول (Glassmorphism) */
+    .fi-topbar {
+        backdrop-filter: blur(14px) !important;
+        background: rgba(255, 255, 255, 0.88) !important;
+        border-bottom: 1px solid rgba(226, 232, 240, 0.8) !important;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.02) !important;
+    }
+
+    .dark .fi-topbar {
+        background: rgba(15, 23, 42, 0.88) !important;
+        border-bottom-color: rgba(51, 65, 85, 0.4) !important;
+    }
+
+    /* 3. شريط القائمة الجانبي (Sidebar) */
+    .fi-sidebar {
+        border-left: 1px solid rgba(226, 232, 240, 0.8) !important;
+    }
+
+    .dark .fi-sidebar {
+        border-left-color: rgba(51, 65, 85, 0.4) !important;
+    }
+
+    .fi-sidebar-item-active .fi-sidebar-item-btn {
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(245, 158, 11, 0.05) 100%) !important;
+        border-right: 3px solid #f59e0b !important;
+        border-radius: 12px !important;
+        font-weight: 700 !important;
+        color: #d97706 !important;
+    }
+
+    .dark .fi-sidebar-item-active .fi-sidebar-item-btn {
+        color: #fbbf24 !important;
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(245, 158, 11, 0.08) 100%) !important;
+    }
+
+    /* 4. كروت الإحصائيات في لوحة التحكم (Stats Overview Widgets) */
+    .fi-wi-stats-overview-stat {
+        border-radius: 18px !important;
+        border: 1px solid rgba(226, 232, 240, 0.85) !important;
+        box-shadow: 0 4px 20px -3px rgba(15, 23, 42, 0.04) !important;
+        background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        overflow: hidden !important;
+    }
+
+    .fi-wi-stats-overview-stat:hover {
+        transform: translateY(-3px) !important;
+        box-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.09) !important;
+        border-color: rgba(203, 213, 225, 1) !important;
+    }
+
+    .dark .fi-wi-stats-overview-stat {
+        background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%) !important;
+        border-color: rgba(51, 65, 85, 0.5) !important;
+    }
+
+    /* 5. تصميم بطاقة الجداول الرئيسية (Tables) لكافة الموارد */
     .fi-ta-ctn {
         border-radius: 18px !important;
         box-shadow: 0 4px 25px -4px rgba(15, 23, 42, 0.05), 0 2px 10px -2px rgba(15, 23, 42, 0.02) !important;
@@ -33,7 +90,7 @@
         box-shadow: 0 4px 25px -4px rgba(0, 0, 0, 0.3) !important;
     }
 
-    /* تحسين ترويسة الجدول (Header) */
+    /* ترويسة الجدول الفاخرة */
     .fi-ta-header-cell {
         background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%) !important;
         padding-top: 14px !important;
@@ -49,7 +106,7 @@
         border-bottom-color: #334155 !important;
     }
 
-    /* تأثير تفاعلي فاخر على صفوف الجدول عند مرور الفأرة (Hover Effect) */
+    /* تأثير التمرير للصفوف في كافة الجداول */
     .fi-ta-record {
         transition: all 0.2s ease-in-out !important;
         border-bottom: 1px solid rgba(241, 245, 249, 0.9) !important;
@@ -57,7 +114,6 @@
 
     .fi-ta-record:hover {
         background: rgba(248, 250, 252, 0.95) !important;
-        transform: scale(1.001);
     }
 
     .dark .fi-ta-record {
@@ -68,17 +124,82 @@
         background: rgba(30, 41, 59, 0.6) !important;
     }
 
-    /* تحسين الشارات (Badges) */
+    /* 6. بطاقات التفاصيل والأقسام (Sections & Infolists) في كافة الصفحات */
+    .fi-section {
+        border-radius: 18px !important;
+        border: 1px solid rgba(226, 232, 240, 0.85) !important;
+        box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04) !important;
+        background: #ffffff !important;
+        overflow: hidden !important;
+        transition: all 0.25s ease !important;
+    }
+
+    .dark .fi-section {
+        background: #0f172a !important;
+        border-color: rgba(51, 65, 85, 0.5) !important;
+        box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.2) !important;
+    }
+
+    .fi-section-header {
+        border-bottom: 1px solid rgba(241, 245, 249, 0.9) !important;
+        padding-bottom: 12px !important;
+    }
+
+    .dark .fi-section-header {
+        border-bottom-color: rgba(30, 41, 59, 0.7) !important;
+    }
+
+    .fi-section-header-heading {
+        font-weight: 800 !important;
+        font-size: 1.05rem !important;
+        color: #0f172a !important;
+    }
+
+    .dark .fi-section-header-heading {
+        color: #f8fafc !important;
+    }
+
+    /* 7. النوافذ المنبثقة التفاعلية (Modals & Dialogs) */
+    .fi-modal-window {
+        border-radius: 22px !important;
+        border: 1px solid rgba(226, 232, 240, 0.8) !important;
+        box-shadow: 0 25px 60px -15px rgba(15, 23, 42, 0.25) !important;
+        overflow: hidden !important;
+    }
+
+    .dark .fi-modal-window {
+        border-color: rgba(51, 65, 85, 0.6) !important;
+        box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.6) !important;
+    }
+
+    .fi-modal-close-overlay {
+        backdrop-filter: blur(8px) !important;
+        background: rgba(15, 23, 42, 0.4) !important;
+    }
+
+    /* 8. حقول الإدخال والاختيارات (Form Inputs & Selects) */
+    .fi-input-wrp {
+        border-radius: 12px !important;
+        border-color: #d1d5db !important;
+        transition: all 0.2s ease !important;
+    }
+
+    .fi-input-wrp:focus-within {
+        border-color: #f59e0b !important;
+        box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.16) !important;
+    }
+
+    /* 9. تحسين الشارات (Pill Badges) */
     .fi-badge {
-        padding: 4px 12px !important;
+        padding: 5px 14px !important;
         font-weight: 700 !important;
         font-size: 0.8rem !important;
         border-radius: 9999px !important;
         letter-spacing: 0.01em !important;
-        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04) !important;
     }
 
-    /* تحسين أزرار شريط الإجراءات العلوي (Header Action Buttons) */
+    /* 10. أزرار الهيدر العلوية (Page Header Action Buttons) */
     .fi-page-header .fi-btn {
         border-radius: 12px !important;
         font-weight: 700 !important;
@@ -96,43 +217,18 @@
         transform: translateY(0px) !important;
     }
 
-    /* زر التحديث الأخضر بتدرج عصري */
-    .fi-page-header .fi-btn-color-success {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
-        border: none !important;
-        color: #ffffff !important;
-    }
-
-    .fi-page-header .fi-btn-color-success:hover {
-        background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
-    }
-
-    /* زر الفترة البرتقالي */
-    .fi-page-header .fi-btn-color-warning {
-        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
-        border: none !important;
-        color: #ffffff !important;
-    }
-
-    /* زر السحب الكامل */
-    .fi-page-header .fi-btn-color-primary {
-        background: linear-gradient(135deg, #f97316 0%, #ea580c 100%) !important;
-        border: none !important;
-        color: #ffffff !important;
-    }
-
-    /* تحسين أزرار الأيقونات في كل صف (View & Sync Icons) */
+    /* أزرار العمليات المصغرة (Icon Buttons) داخل الجداول */
     .fi-ta-actions .fi-icon-btn {
         width: 36px !important;
         height: 36px !important;
         border-radius: 10px !important;
         transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        background: rgba(241, 245, 249, 0.6) !important;
+        background: rgba(241, 245, 249, 0.7) !important;
     }
 
     .fi-ta-actions .fi-icon-btn:hover {
         transform: scale(1.15) !important;
-        background: rgba(226, 232, 240, 0.9) !important;
+        background: rgba(226, 232, 240, 0.95) !important;
         box-shadow: 0 4px 10px -1px rgba(0, 0, 0, 0.08) !important;
     }
 
@@ -144,40 +240,14 @@
         background: rgba(51, 65, 85, 0.8) !important;
     }
 
-    /* تحسين حقل البحث (Search Input) */
-    .fi-ta-search-field input {
-        border-radius: 12px !important;
-        border: 1px solid #e2e8f0 !important;
-        padding-top: 8px !important;
-        padding-bottom: 8px !important;
-        background: #f8fafc !important;
+    /* 11. أرقام الترقيم السفلي للصفحات (Pagination) */
+    .fi-pagination-item-btn {
+        border-radius: 10px !important;
+        font-weight: 700 !important;
         transition: all 0.2s ease !important;
     }
 
-    .fi-ta-search-field input:focus {
-        background: #ffffff !important;
-        border-color: #f59e0b !important;
-        box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15) !important;
-    }
-
-    .dark .fi-ta-search-field input {
-        background: #1e293b !important;
-        border-color: #334155 !important;
-    }
-
-    .dark .fi-ta-search-field input:focus {
-        background: #0f172a !important;
-    }
-
-    /* تحسين شريط التنقل الجانبي (Sidebar) */
-    .fi-sidebar-item-active .fi-sidebar-item-btn {
-        background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(245, 158, 11, 0.06) 100%) !important;
-        border-right: 3px solid #f59e0b !important;
-        border-radius: 10px !important;
-        font-weight: 700 !important;
-    }
-
-    /* عنوان الصفحة مع تفاصيل جمالية */
+    /* 12. عناوين الصفحات العلوية */
     .fi-header-heading {
         font-weight: 800 !important;
         letter-spacing: -0.02em !important;
@@ -190,7 +260,7 @@
 
     .fi-header-subheading {
         color: #64748b !important;
-        font-size: 0.95rem !important;
+        font-size: 0.92rem !important;
         margin-top: 4px !important;
     }
 </style>

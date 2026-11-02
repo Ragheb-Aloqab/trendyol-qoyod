@@ -31,7 +31,8 @@ class QoyodSyncsTable
                     ->label('رقم الشحنة')
                     ->searchable()
                     ->sortable()
-                    ->copyable(),
+                    ->copyable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('type')
                     ->label('نوع المستند')
@@ -71,24 +72,27 @@ class QoyodSyncsTable
                     ->placeholder('-'),
 
                 TextColumn::make('qoyod_reference')
-                    ->label('الرقم المرجعي')
+                    ->label('المرجع في قيود')
                     ->copyable()
-                    ->placeholder('-'),
+                    ->placeholder('-')
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('attempts')
                     ->label('المحاولات')
+                    ->alignCenter()
                     ->sortable(),
 
                 TextColumn::make('last_error')
                     ->label('آخر خطأ')
-                    ->limit(35)
+                    ->limit(25)
                     ->tooltip(fn (?string $state): ?string => $state)
                     ->color('danger')
                     ->placeholder('-'),
 
                 TextColumn::make('synced_at')
                     ->label('تاريخ المزامنة')
-                    ->dateTime('Y-m-d H:i')
+                    ->date('Y-m-d')
+                    ->description(fn (QoyodSync $record): ?string => $record->synced_at?->format('H:i'))
                     ->sortable()
                     ->placeholder('لم تتم'),
             ])
@@ -109,10 +113,12 @@ class QoyodSyncsTable
             ])
             ->recordActions([
                 ViewAction::make()
-                    ->label('عرض التفاصيل'),
+                    ->iconButton()
+                    ->tooltip('عرض تفاصيل السجل'),
 
                 Action::make('retry')
-                    ->label(fn (QoyodSync $record): string => match ($record->status) {
+                    ->iconButton()
+                    ->tooltip(fn (QoyodSync $record): string => match ($record->status) {
                         QoyodSync::STATUS_SUCCESS => 'إعادة الإرسال لقيود',
                         QoyodSync::STATUS_FAILED => 'إعادة المحاولة',
                         default => 'إرسال لقيود الآن',
@@ -125,7 +131,7 @@ class QoyodSyncsTable
                     ->color(fn (QoyodSync $record): string => match ($record->status) {
                         QoyodSync::STATUS_SUCCESS => 'gray',
                         QoyodSync::STATUS_FAILED => 'warning',
-                        default => 'success',
+                        default => 'primary',
                     })
                     ->requiresConfirmation()
                     ->modalHeading(fn (QoyodSync $record): string => match ($record->status) {
@@ -156,7 +162,7 @@ class QoyodSyncsTable
                         }
                     }),
             ])
-            ->toolbarActions([
+            ->bulkActions([
                 BulkActionGroup::make([
                     BulkAction::make('bulk_retry_to_qoyod')
                         ->label('إعادة إرسال السجلات المحددة لقيود')
@@ -199,26 +205,6 @@ class QoyodSyncsTable
                             }
                         }),
                 ]),
-
-                Action::make('sync_all_pending')
-                    ->label('مزامنة كافة المعلقات الآن')
-                    ->icon('heroicon-o-arrow-path')
-                    ->color('primary')
-                    ->requiresConfirmation()
-                    ->modalHeading('مزامنة الفواتير المعلقة دفعة واحدة')
-                    ->modalDescription('سيتم إرسال كافة فواتير قيود المعلقة (قيد الانتظار) إلى حسابك في قيود فوراً.')
-                    ->modalSubmitActionLabel('بدء المزامنة')
-                    ->modalCancelActionLabel('إلغاء')
-                    ->action(function () {
-                        $qoyodService = app(\App\Services\QoyodInvoiceSyncService::class);
-                        $result = $qoyodService->syncPendingInvoices(50);
-
-                        Notification::make()
-                            ->title('اكتملت مزامنة الفواتير المعلقة')
-                            ->body("تمت معالجة {$result['processed']} فاتورة (نجاح: {$result['success']} - فشل: {$result['failed']})")
-                            ->info()
-                            ->send();
-                    }),
             ]);
     }
 }

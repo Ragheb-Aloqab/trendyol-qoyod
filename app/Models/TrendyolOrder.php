@@ -72,6 +72,11 @@ class TrendyolOrder extends Model
         return $this->hasOne(QoyodSync::class)->where('type', QoyodSync::TYPE_CREDIT_NOTE);
     }
 
+    public function qoyodInvoice(): HasOne
+    {
+        return $this->hasOne(QoyodInvoice::class, 'trendyol_order_id');
+    }
+
     public function getCustomerFullNameAttribute(): string
     {
         return trim(($this->customer_first_name ?? '') . ' ' . ($this->customer_last_name ?? ''));

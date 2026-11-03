@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class QoyodSync extends Model
 {
@@ -47,6 +48,11 @@ class QoyodSync extends Model
     public function order(): BelongsTo
     {
         return $this->belongsTo(TrendyolOrder::class, 'trendyol_order_id');
+    }
+
+    public function qoyodInvoice(): HasOne
+    {
+        return $this->hasOne(QoyodInvoice::class, 'qoyod_sync_id');
     }
 
     public function markAsSuccess(string $qoyodId, ?array $responsePayload = null): void

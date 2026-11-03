@@ -131,6 +131,20 @@ class TrendyolOrdersTable
                     ->iconButton()
                     ->tooltip('عرض تفاصيل الطلب'),
 
+                Action::make('view_qoyod_invoice')
+                    ->iconButton()
+                    ->icon('heroicon-o-document-text')
+                    ->tooltip('عرض فاتورة قيود')
+                    ->color('info')
+                    ->visible(fn (TrendyolOrder $record): bool => !empty($record->invoiceSync?->qoyod_id) || $record->qoyodInvoice !== null)
+                    ->url(function (TrendyolOrder $record) {
+                        $inv = $record->qoyodInvoice ?: \App\Models\QoyodInvoice::where('trendyol_order_id', $record->id)->first();
+                        if ($inv) {
+                            return \App\Filament\Resources\QoyodInvoices\QoyodInvoiceResource::getUrl('view', ['record' => $inv]);
+                        }
+                        return null;
+                    }),
+
                 Action::make('sync_to_qoyod')
                     ->iconButton()
                     ->icon('heroicon-o-paper-airplane')

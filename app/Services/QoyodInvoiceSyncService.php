@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\QoyodInvoice;
 use App\Models\QoyodSync;
 use App\Models\TrendyolOrder;
 use App\Models\TrendyolOrderItem;
@@ -92,6 +93,9 @@ class QoyodInvoiceSyncService
                             'note' => 'تم العثور على الفاتورة مسبقاً في قيود بنفس الرقم المرجعي للطلب',
                         ]);
 
+                        // Automatically fetch and persist detailed invoice record
+                        $this->fetchAndStoreInvoiceDetails($qoyodId, $order, $sync);
+
                         return [
                             'success' => true,
                             'qoyod_id' => $qoyodId,
@@ -119,6 +123,9 @@ class QoyodInvoiceSyncService
                                 'invoice' => $existingInvoice,
                                 'note' => 'تم العثور على الفاتورة مسبقاً في قيود برقم الشحنة السابق',
                             ]);
+
+                            // Automatically fetch and persist detailed invoice record
+                            $this->fetchAndStoreInvoiceDetails($qoyodId, $order, $sync);
 
                             return [
                                 'success' => true,
@@ -186,6 +193,9 @@ class QoyodInvoiceSyncService
                     'qoyod_id' => $qoyodId,
                     'reference' => $reference,
                 ]);
+
+                // Automatically fetch and store invoice details & PDF from Qoyod
+                $this->fetchAndStoreInvoiceDetails($qoyodId, $order, $sync);
 
                 return [
                     'success' => true,
@@ -668,6 +678,181 @@ class QoyodInvoiceSyncService
 
         if ($fallback->successful() && !empty($fallback->json('products')[0]['id'])) {
             return (int) $fallback->json('products')[0]['id'];
+        }
+
+        return null;
+    }
+
+    /**
+     * Fetch invoice details and PDF from Qoyod API, and persist in qoyod_invoices table.
+     * Decoupled from invoice creation: failure to fetch does NOT fail or revert the invoice.
+     */
+    public function fetchAndStoreInvoiceDetails(string|int $qoyodId, ?TrendyolOrder $order = null, ?QoyodSync $sync = null): ?QoyodInvoice
+    {
+        if (empty($this->apiKey) || empty($qoyodId)) {
+            return null;
+        }
+
+        $qoyodIdStr = (string) $qoyodId;
+
+        // Try to associate order and sync if not passed
+        if (!$order && $sync) {
+            $order = $sync->order;
+        }
+
+        if (!$order) {
+            $syncRecord = QoyodSync::where('qoyod_id', $qoyodIdStr)->with('order')->first();
+            if ($syncRecord) {
+                $sync = $sync ?? $syncRecord;
+                $order = $syncRecord->order;
+            }
+        }
+
+        /** @var QoyodInvoice $qoyodInvoice */
+        $qoyodInvoice = QoyodInvoice::firstOrNew(['qoyod_invoice_id' => $qoyodIdStr]);
+
+        if ($order) {
+            $qoyodInvoice->trendyol_order_id = $order->id;
+        }
+        if ($sync) {
+            $qoyodInvoice->qoyod_sync_id = $sync->id;
+        }
+
+        $headers = [
+            'API-KEY' => $this->apiKey,
+            'Accept' => 'application/json',
+        ];
+
+        try {
+            $timeout = (int) config('services.qoyod.timeout', 20);
+            $res = Http::withHeaders($headers)
+                ->timeout($timeout)
+                ->get("{$this->baseUrl}/invoices/{$qoyodIdStr}");
+
+            if (!$res->successful()) {
+                $status = $res->status();
+                $err = "فشل جلب تفاصيل الفاتورة من قيود (كود {$status}): " . substr($res->body(), 0, 200);
+                $qoyodInvoice->fetch_status = QoyodInvoice::FETCH_STATUS_FAILED;
+                $qoyodInvoice->fetch_error = $err;
+                $qoyodInvoice->save();
+
+                Log::warning("Failed to fetch Qoyod invoice details for ID {$qoyodIdStr}", [
+                    'status' => $status,
+                    'response' => $res->body(),
+                ]);
+
+                return $qoyodInvoice;
+            }
+
+            $body = $res->json();
+            $inv = $body['invoice'] ?? $body;
+
+            // Extract invoice fields
+            $reference = $inv['reference'] ?? ($order ? 'TY-' . $order->order_number : null);
+            $issueDate = !empty($inv['issue_date']) ? $inv['issue_date'] : null;
+            $dueDate = !empty($inv['due_date']) ? $inv['due_date'] : null;
+            $status = $inv['status'] ?? 'Approved';
+            $total = (float) ($inv['total'] ?? 0);
+
+            // Compute subtotal, tax_amount, total_discount from line items if present
+            $lineItems = $inv['line_items'] ?? [];
+            $computedSubtotal = 0.0;
+            $computedTax = 0.0;
+            $computedDiscount = 0.0;
+
+            if (!empty($lineItems)) {
+                foreach ($lineItems as $item) {
+                    $qty = (float) ($item['quantity'] ?? 1);
+                    $unitPrice = (float) ($item['unit_price'] ?? 0);
+                    $disc = (float) ($item['discount_amount'] ?? 0);
+                    $vat = (float) ($item['unrounded_vat_value'] ?? $item['tax_amount'] ?? 0);
+                    $taxPercent = (float) ($item['tax_percent'] ?? $this->taxPercent);
+
+                    $computedSubtotal += ($unitPrice * $qty) - $disc;
+                    $computedTax += $vat;
+
+                    $rate = 1 + ($taxPercent / 100);
+                    $computedDiscount += $disc * $rate;
+                }
+            }
+
+            if ($computedTax <= 0 && isset($inv['tax_amount'])) {
+                $computedTax = (float) $inv['tax_amount'];
+            }
+            if ($computedSubtotal <= 0) {
+                $computedSubtotal = max(0, $total - $computedTax);
+            }
+            if ($computedDiscount <= 0 && isset($inv['discount_amount'])) {
+                $computedDiscount = (float) $inv['discount_amount'];
+            }
+
+            // Fetch PDF direct link from Qoyod API
+            $pdfUrl = $this->fetchInvoicePdfUrl($qoyodIdStr, $headers);
+
+            $qoyodInvoice->fill([
+                'qoyod_invoice_number' => $reference,
+                'issue_date' => $issueDate,
+                'due_date' => $dueDate,
+                'subtotal' => round($computedSubtotal, 2),
+                'tax_amount' => round($computedTax, 2),
+                'total_discount' => round($computedDiscount, 2),
+                'total' => round($total, 2),
+                'status' => $status,
+                'pdf_url' => $pdfUrl,
+                'fetch_status' => QoyodInvoice::FETCH_STATUS_SUCCESS,
+                'fetch_error' => null,
+                'fetched_at' => now(),
+                'raw_data' => $inv,
+            ]);
+
+            $qoyodInvoice->save();
+
+            Log::info("Qoyod invoice details fetched and stored successfully for ID {$qoyodIdStr}", [
+                'order_id' => $order?->id,
+                'total' => $total,
+                'pdf_url' => $pdfUrl,
+            ]);
+
+            return $qoyodInvoice;
+        } catch (Throwable $e) {
+            $qoyodInvoice->fetch_status = QoyodInvoice::FETCH_STATUS_FAILED;
+            $qoyodInvoice->fetch_error = 'استثناء أثناء جلب بيانات الفاتورة: ' . $e->getMessage();
+            $qoyodInvoice->save();
+
+            Log::error("Exception fetching Qoyod invoice details for ID {$qoyodIdStr}", [
+                'error' => $e->getMessage(),
+            ]);
+
+            return $qoyodInvoice;
+        }
+    }
+
+    /**
+     * Fetch PDF direct URL from Qoyod API GET /invoices/{id}/pdf
+     */
+    public function fetchInvoicePdfUrl(string|int $qoyodId, ?array $headers = null): ?string
+    {
+        if (empty($this->apiKey) || empty($qoyodId)) {
+            return null;
+        }
+
+        $headers = $headers ?? [
+            'API-KEY' => $this->apiKey,
+            'Accept' => 'application/json',
+        ];
+
+        try {
+            $timeout = (int) config('services.qoyod.timeout', 15);
+            $response = Http::withHeaders($headers)
+                ->timeout($timeout)
+                ->get("{$this->baseUrl}/invoices/{$qoyodId}/pdf");
+
+            if ($response->successful()) {
+                $data = $response->json();
+                return $data['pdf_file'] ?? $data['url'] ?? null;
+            }
+        } catch (Throwable $e) {
+            Log::warning("Failed to fetch PDF URL for Qoyod invoice {$qoyodId}: {$e->getMessage()}");
         }
 
         return null;

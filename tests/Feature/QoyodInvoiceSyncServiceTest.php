@@ -299,4 +299,203 @@ class QoyodInvoiceSyncServiceTest extends TestCase
             return true;
         });
     }
+
+    public function test_sync_automatically_fetches_and_persists_qoyod_invoice_and_pdf(): void
+    {
+        config()->set('services.qoyod.base_url', 'https://api.qoyod.com/2.0');
+        config()->set('services.qoyod.api_key', 'test_key');
+        config()->set('services.qoyod.default_inventory_id', 1);
+
+        $order = TrendyolOrder::create([
+            'order_number' => 'TY-FETCH-01',
+            'shipment_package_id' => 1234567,
+            'status' => 'Delivered',
+            'currency' => 'SAR',
+            'gross_amount' => 320.00,
+            'total_discount' => 85.40,
+            'total_price' => 234.60,
+            'customer_first_name' => 'Fahad',
+            'customer_last_name' => 'Al-Otaibi',
+            'order_date' => now(),
+            'raw_payload' => [],
+        ]);
+
+        $order->items()->create([
+            'line_item_id' => 901,
+            'barcode' => 'BAR-901',
+            'merchant_sku' => 'SKU-901',
+            'product_name' => 'Men Shirt',
+            'quantity' => 1,
+            'unit_price' => 234.60,
+            'vat_rate' => 15.00,
+            'discount' => 85.40,
+            'currency' => 'SAR',
+            'raw_payload' => [
+                'lineGrossAmount' => 320.00,
+                'lineTotalDiscount' => 85.40,
+                'price' => 234.60,
+            ],
+        ]);
+
+        Http::fake([
+            'https://api.qoyod.com/2.0/invoices?q*' => Http::response(['invoices' => []], 200),
+            'https://api.qoyod.com/2.0/customers*' => Http::response(['customers' => [['id' => 15]]], 200),
+            'https://api.qoyod.com/2.0/products*' => Http::response(['products' => [['id' => 25]]], 200),
+            'https://api.qoyod.com/2.0/invoices' => Http::response([
+                'invoice' => [
+                    'id' => 10745,
+                    'reference' => 'TY-FETCH-01',
+                    'total' => '234.60',
+                    'status' => 'Approved',
+                ],
+            ], 201),
+            'https://api.qoyod.com/2.0/invoices/10745' => Http::response([
+                'invoice' => [
+                    'id' => 10745,
+                    'reference' => 'TY-FETCH-01',
+                    'issue_date' => '2026-11-04',
+                    'due_date' => '2026-11-04',
+                    'status' => 'Approved',
+                    'total' => '234.60',
+                    'line_items' => [
+                        [
+                            'product_name' => 'Men Shirt',
+                            'quantity' => '1.0',
+                            'unit_price' => '278.26086956521739',
+                            'discount_amount' => '74.26086956521739',
+                            'tax_percent' => '15.0',
+                            'unrounded_vat_value' => '30.60',
+                            'line_total' => '234.60',
+                        ],
+                    ],
+                ],
+            ], 200),
+            'https://api.qoyod.com/2.0/invoices/10745/pdf' => Http::response([
+                'pdf_file' => 'https://cdn.qoyod.com/export/pdf/10745_invoice.pdf',
+                'expire_at' => '2026-11-04T12:00:00Z',
+            ], 200),
+        ]);
+
+        $service = new QoyodInvoiceSyncService();
+        $result = $service->syncOrderInvoice($order);
+
+        $this->assertTrue($result['success']);
+        $this->assertEquals('10745', $result['qoyod_id']);
+
+        // Assert QoyodInvoice record was automatically created in DB
+        $storedInvoice = \App\Models\QoyodInvoice::where('qoyod_invoice_id', '10745')->first();
+        $this->assertNotNull($storedInvoice);
+        $this->assertEquals($order->id, $storedInvoice->trendyol_order_id);
+        $this->assertEquals('TY-FETCH-01', $storedInvoice->qoyod_invoice_number);
+        $this->assertEquals(204.00, (float) $storedInvoice->subtotal);
+        $this->assertEquals(30.60, (float) $storedInvoice->tax_amount);
+        $this->assertEquals(85.40, (float) $storedInvoice->total_discount);
+        $this->assertEquals(234.60, (float) $storedInvoice->total);
+        $this->assertEquals('Approved', $storedInvoice->status);
+        $this->assertEquals('https://cdn.qoyod.com/export/pdf/10745_invoice.pdf', $storedInvoice->pdf_url);
+        $this->assertEquals(\App\Models\QoyodInvoice::FETCH_STATUS_SUCCESS, $storedInvoice->fetch_status);
+        $this->assertNull($storedInvoice->fetch_error);
+    }
+
+    public function test_fetch_failure_does_not_fail_invoice_creation_and_allows_retry(): void
+    {
+        config()->set('services.qoyod.base_url', 'https://api.qoyod.com/2.0');
+        config()->set('services.qoyod.api_key', 'test_key');
+        config()->set('services.qoyod.default_inventory_id', 1);
+
+        $order = TrendyolOrder::create([
+            'order_number' => 'TY-FETCH-ERR-02',
+            'shipment_package_id' => 99887766,
+            'status' => 'Delivered',
+            'currency' => 'SAR',
+            'gross_amount' => 100.00,
+            'total_discount' => 0.00,
+            'total_price' => 100.00,
+            'order_date' => now(),
+            'raw_payload' => [],
+        ]);
+
+        $order->items()->create([
+            'line_item_id' => 902,
+            'barcode' => 'BAR-902',
+            'merchant_sku' => 'SKU-902',
+            'product_name' => 'Sample Item',
+            'quantity' => 1,
+            'unit_price' => 100.00,
+            'vat_rate' => 15.00,
+            'discount' => 0.00,
+            'currency' => 'SAR',
+            'raw_payload' => ['lineGrossAmount' => 100.00, 'price' => 100.00],
+        ]);
+
+        $fetchSucceeds = false;
+
+        Http::fake([
+            'https://api.qoyod.com/2.0/invoices?q*' => Http::response(['invoices' => []], 200),
+            'https://api.qoyod.com/2.0/customers*' => Http::response(['customers' => [['id' => 15]]], 200),
+            'https://api.qoyod.com/2.0/products*' => Http::response(['products' => [['id' => 25]]], 200),
+            'https://api.qoyod.com/2.0/invoices' => Http::response([
+                'invoice' => [
+                    'id' => 10746,
+                    'reference' => 'TY-FETCH-ERR-02',
+                    'total' => '100.00',
+                ],
+            ], 201),
+            'https://api.qoyod.com/2.0/invoices/10746' => function () use (&$fetchSucceeds) {
+                if (!$fetchSucceeds) {
+                    return Http::response(['error' => 'Internal Server Error'], 500);
+                }
+                return Http::response([
+                    'invoice' => [
+                        'id' => 10746,
+                        'reference' => 'TY-FETCH-ERR-02',
+                        'issue_date' => '2026-11-04',
+                        'status' => 'Approved',
+                        'total' => '100.00',
+                        'line_items' => [
+                            [
+                                'product_name' => 'Sample Item',
+                                'quantity' => '1.0',
+                                'unit_price' => '86.9565',
+                                'discount_amount' => '0.00',
+                                'tax_percent' => '15.0',
+                                'unrounded_vat_value' => '13.04',
+                                'line_total' => '100.00',
+                            ],
+                        ],
+                    ],
+                ], 200);
+            },
+            'https://api.qoyod.com/2.0/invoices/10746/pdf' => function () use (&$fetchSucceeds) {
+                if (!$fetchSucceeds) {
+                    return Http::response([], 500);
+                }
+                return Http::response([
+                    'pdf_file' => 'https://cdn.qoyod.com/export/pdf/10746_recovered.pdf',
+                ], 200);
+            },
+        ]);
+
+        $service = new QoyodInvoiceSyncService();
+        $result = $service->syncOrderInvoice($order);
+
+        // Crucial requirement: Invoice creation in Qoyod must STILL succeed!
+        $this->assertTrue($result['success']);
+        $this->assertEquals('10746', $result['qoyod_id']);
+
+        // Check QoyodInvoice record
+        $storedInvoice = \App\Models\QoyodInvoice::where('qoyod_invoice_id', '10746')->first();
+        $this->assertNotNull($storedInvoice);
+        $this->assertEquals(\App\Models\QoyodInvoice::FETCH_STATUS_FAILED, $storedInvoice->fetch_status);
+        $this->assertNotNull($storedInvoice->fetch_error);
+
+        // Now simulate API recovery and retry fetching
+        $fetchSucceeds = true;
+
+        $retried = $service->fetchAndStoreInvoiceDetails('10746', $order, $order->invoiceSync);
+        $this->assertNotNull($retried);
+        $this->assertEquals(\App\Models\QoyodInvoice::FETCH_STATUS_SUCCESS, $retried->fetch_status);
+        $this->assertNull($retried->fetch_error);
+        $this->assertEquals('https://cdn.qoyod.com/export/pdf/10746_recovered.pdf', $retried->pdf_url);
+    }
 }

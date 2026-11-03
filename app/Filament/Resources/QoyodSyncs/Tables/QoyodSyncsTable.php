@@ -116,6 +116,20 @@ class QoyodSyncsTable
                     ->iconButton()
                     ->tooltip('عرض تفاصيل السجل'),
 
+                Action::make('view_invoice')
+                    ->iconButton()
+                    ->icon('heroicon-o-document-text')
+                    ->tooltip('عرض فاتورة قيود')
+                    ->color('info')
+                    ->visible(fn (QoyodSync $record): bool => !empty($record->qoyod_id))
+                    ->url(function (QoyodSync $record) {
+                        $inv = $record->qoyodInvoice ?: \App\Models\QoyodInvoice::where('qoyod_invoice_id', (string) $record->qoyod_id)->first();
+                        if ($inv) {
+                            return \App\Filament\Resources\QoyodInvoices\QoyodInvoiceResource::getUrl('view', ['record' => $inv]);
+                        }
+                        return null;
+                    }),
+
                 Action::make('retry')
                     ->iconButton()
                     ->tooltip(fn (QoyodSync $record): string => match ($record->status) {

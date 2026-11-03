@@ -16,13 +16,15 @@ class QoyodInvoiceSyncService
     protected ?string $apiKey;
     protected mixed $inventoryId;
     protected int $taxId;
+    protected float $taxPercent;
 
     public function __construct()
     {
         $this->baseUrl = config('services.qoyod.base_url', 'https://api.qoyod.com/2.0');
         $this->apiKey = config('services.qoyod.api_key');
         $this->inventoryId = config('services.qoyod.default_inventory_id');
-        $this->taxId = (int) config('services.qoyod.default_tax_id', 1);
+        $this->taxId = (int) config('services.qoyod.default_tax_id', 2); // 2 = Zero VAT
+        $this->taxPercent = (float) config('services.qoyod.default_tax_percent', 0.0);
     }
 
     /**
@@ -151,7 +153,7 @@ class QoyodInvoiceSyncService
                 'reference' => $reference,
                 'description' => "فاتورة طلب ترينديول رقم: {$order->order_number}",
                 'status' => 'Approved',
-                'is_inclusive' => true,
+                'is_inclusive' => false,
                 'line_items' => $lineItems,
             ];
 
@@ -551,14 +553,14 @@ class QoyodInvoiceSyncService
             $unitDiscount = !empty($raw['lineTotalDiscount']) ? (float) $raw['lineTotalDiscount'] : (!empty($raw['discount']) ? (float) $raw['discount'] : max(0, $grossUnitPrice - $netUnitPrice));
             $totalLineDiscount = $unitDiscount * $quantity;
 
-            // إرسال السعر الأصلي شامل الضريبة مع إجمالي الخصم بدقة:
+            // إرسال سعر الوحدة والخصم الأصلي من ترينديول مع نسبة ضريبة 0% حتى تظهر نفس الأرقام تماماً في قيود بدون تفكيك أو ضريبة مكررة
             $line = [
                 'quantity' => $quantity,
                 'unit_price' => (float) number_format($grossUnitPrice, 2, '.', ''),
-                'tax_percent' => $vatRate,
+                'tax_percent' => $this->taxPercent,
                 'discount' => number_format(max(0, $totalLineDiscount), 2, '.', ''),
                 'discount_type' => 'amount',
-                'is_inclusive' => true,
+                'is_inclusive' => false,
             ];
 
             if ($productId) {

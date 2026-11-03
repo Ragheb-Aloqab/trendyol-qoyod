@@ -23,8 +23,8 @@ class QoyodInvoiceSyncService
         $this->baseUrl = config('services.qoyod.base_url', 'https://api.qoyod.com/2.0');
         $this->apiKey = config('services.qoyod.api_key');
         $this->inventoryId = config('services.qoyod.default_inventory_id');
-        $this->taxId = (int) config('services.qoyod.default_tax_id', 2); // 2 = Zero VAT
-        $this->taxPercent = (float) config('services.qoyod.default_tax_percent', 0.0);
+        $this->taxId = (int) config('services.qoyod.default_tax_id', 1); // 1 = 15% Standard VAT
+        $this->taxPercent = (float) config('services.qoyod.default_tax_percent', 15.0);
     }
 
     /**
@@ -153,7 +153,7 @@ class QoyodInvoiceSyncService
                 'reference' => $reference,
                 'description' => "فاتورة طلب ترينديول رقم: {$order->order_number}",
                 'status' => 'Approved',
-                'is_inclusive' => false,
+                'is_inclusive' => true,
                 'line_items' => $lineItems,
             ];
 
@@ -553,14 +553,14 @@ class QoyodInvoiceSyncService
             $unitDiscount = !empty($raw['lineTotalDiscount']) ? (float) $raw['lineTotalDiscount'] : (!empty($raw['discount']) ? (float) $raw['discount'] : max(0, $grossUnitPrice - $netUnitPrice));
             $totalLineDiscount = $unitDiscount * $quantity;
 
-            // إرسال سعر الوحدة والخصم الأصلي من ترينديول مع نسبة ضريبة 0% حتى تظهر نفس الأرقام تماماً في قيود بدون تفكيك أو ضريبة مكررة
+            // إرسال السعر الأصلي شامل الضريبة مع إجمالي الخصم بدقة وإبلاغ قيود أن الأسعار شاملة الضريبة (15%)
             $line = [
                 'quantity' => $quantity,
                 'unit_price' => (float) number_format($grossUnitPrice, 2, '.', ''),
-                'tax_percent' => $this->taxPercent,
+                'tax_percent' => $vatRate,
                 'discount' => number_format(max(0, $totalLineDiscount), 2, '.', ''),
                 'discount_type' => 'amount',
-                'is_inclusive' => false,
+                'is_inclusive' => true,
             ];
 
             if ($productId) {
@@ -635,6 +635,7 @@ class QoyodInvoiceSyncService
                 'is_sold' => true,
                 'is_bought' => false,
                 'selling_price' => (string) number_format($sellingPrice, 2, '.', ''),
+                'tax_id' => $this->taxId,
                 'track_quantity' => false,
             ],
         ];

@@ -160,7 +160,7 @@ class QoyodInvoiceSyncService
                 'reference' => $reference,
                 'description' => "فاتورة طلب ترينديول رقم: {$order->order_number}",
                 'status' => 'Approved',
-                'is_inclusive' => true,
+                'is_inclusive' => false,
                 'line_items' => $lineItems,
             ];
 

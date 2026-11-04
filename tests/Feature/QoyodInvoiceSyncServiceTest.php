@@ -94,11 +94,11 @@ class QoyodInvoiceSyncServiceTest extends TestCase
             $invoice = $body['invoice'] ?? [];
             $line = $invoice['line_items'][0] ?? [];
 
-            // 1. Must have is_inclusive: true on invoice level
+            // 1. Must have is_inclusive: true on invoice level only
             $invoiceInclusive = ($invoice['is_inclusive'] ?? false) === true;
 
-            // 2. Must have is_inclusive: true on line item level
-            $lineInclusive = ($line['is_inclusive'] ?? false) === true;
+            // 2. Line item does not require is_inclusive (invoice level handles it)
+            $lineDoesNotHaveInclusive = !isset($line['is_inclusive']);
 
             // 3. Must have original gross retail unit price (177.21), total line discount (34.55), and 15% tax
             $unitPriceMatches = (float) $line['unit_price'] === 177.21;
@@ -106,7 +106,7 @@ class QoyodInvoiceSyncServiceTest extends TestCase
             $discountTypeMatches = ($line['discount_type'] ?? '') === 'amount';
             $taxPercentMatches = (float) ($line['tax_percent'] ?? 0) === 15.0;
 
-            return $invoiceInclusive && $lineInclusive && $unitPriceMatches && $discountMatches && $discountTypeMatches && $taxPercentMatches;
+            return $invoiceInclusive && $lineDoesNotHaveInclusive && $unitPriceMatches && $discountMatches && $discountTypeMatches && $taxPercentMatches;
         });
     }
 
@@ -195,7 +195,7 @@ class QoyodInvoiceSyncServiceTest extends TestCase
                 && (float) $line['discount'] === 142.32
                 && $line['discount_type'] === 'amount'
                 && (float) ($line['tax_percent'] ?? 0) === 15.0
-                && ($line['is_inclusive'] ?? false) === true;
+                && ($body['invoice']['is_inclusive'] ?? false) === true;
         });
     }
 
@@ -288,9 +288,9 @@ class QoyodInvoiceSyncServiceTest extends TestCase
             $invoice = $body['invoice'] ?? [];
             $line = $invoice['line_items'][0] ?? [];
 
-            // Verify payload fields
+            // Verify payload fields: is_inclusive on invoice level only
             $this->assertTrue($invoice['is_inclusive'] ?? false);
-            $this->assertTrue($line['is_inclusive'] ?? false);
+            $this->assertArrayNotHasKey('is_inclusive', $line);
             $this->assertEquals(320.00, (float) $line['unit_price']);
             $this->assertEquals(85.40, (float) $line['discount']);
             $this->assertEquals('amount', $line['discount_type']);

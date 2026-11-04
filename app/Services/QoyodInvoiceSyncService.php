@@ -563,14 +563,13 @@ class QoyodInvoiceSyncService
             $unitDiscount = !empty($raw['lineTotalDiscount']) ? (float) $raw['lineTotalDiscount'] : (!empty($raw['discount']) ? (float) $raw['discount'] : max(0, $grossUnitPrice - $netUnitPrice));
             $totalLineDiscount = $unitDiscount * $quantity;
 
-            // إرسال السعر الأصلي شامل الضريبة مع إجمالي الخصم بدقة وإبلاغ قيود أن الأسعار شاملة الضريبة (15%)
+            // إرسال السعر الأصلي شامل الضريبة مع إجمالي الخصم بدقة (الشامل على مستوى الفاتورة)
             $line = [
                 'quantity' => $quantity,
                 'unit_price' => (float) number_format($grossUnitPrice, 2, '.', ''),
                 'tax_percent' => $vatRate,
                 'discount' => number_format(max(0, $totalLineDiscount), 2, '.', ''),
                 'discount_type' => 'amount',
-                'is_inclusive' => true,
             ];
 
             if ($productId) {

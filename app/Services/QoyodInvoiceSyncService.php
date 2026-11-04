@@ -160,7 +160,7 @@ class QoyodInvoiceSyncService
                 'reference' => $reference,
                 'description' => "فاتورة طلب ترينديول رقم: {$order->order_number}",
                 'status' => 'Approved',
-                'is_inclusive' => false,
+                'is_inclusive' => true,
                 'line_items' => $lineItems,
             ];
 
@@ -563,32 +563,24 @@ class QoyodInvoiceSyncService
             $unitDiscount = !empty($raw['lineTotalDiscount']) ? (float) $raw['lineTotalDiscount'] : (!empty($raw['discount']) ? (float) $raw['discount'] : max(0, $grossUnitPrice - $netUnitPrice));
             $totalLineDiscount = $unitDiscount * $quantity;
 
-            // إرسال السعر الأصلي شامل الضريبة مع إجمالي الخصم بدقة (الشامل على مستوى الفاتورة)
+            $productName = $item->product_name ?: 'منتج ترينديول';
+
             $line = [
+                'discount' => number_format(max(0, $totalLineDiscount), 2, '.', ''),
                 'quantity' => $quantity,
                 'unit_price' => (float) number_format($grossUnitPrice, 2, '.', ''),
-                'tax_percent' => $vatRate,
-                'discount' => number_format(max(0, $totalLineDiscount), 2, '.', ''),
+                'description' => $productName,
+                'tax_percent' => (int) $vatRate,
+                'is_inclusive' => true,
                 'discount_type' => 'amount',
             ];
 
             if ($productId) {
-                $line['product_id'] = $productId;
+                $line['product_id'] = (int) $productId;
             }
 
             if (!empty($inventoryId)) {
                 $line['inventory_id'] = (int) $inventoryId;
-            }
-
-            $productName = $item->product_name ?: 'منتج ترينديول';
-            $formattedGross = number_format($grossUnitPrice, 2, '.', '');
-            $formattedNet = number_format($netUnitPrice * $quantity, 2, '.', '');
-            $formattedDiscount = number_format($totalLineDiscount, 2, '.', '');
-
-            if ($totalLineDiscount > 0) {
-                $line['description'] = "{$productName} (سعر ترينديول الأصلي: {$formattedGross} ر.س | الخصم: {$formattedDiscount} ر.س | الإجمالي بعد الخصم: {$formattedNet} ر.س)";
-            } else {
-                $line['description'] = "{$productName} (سعر ترينديول شامل الضريبة: {$formattedGross} ر.س)";
             }
 
             $lineItems[] = $line;

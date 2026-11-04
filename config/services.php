@@ -55,9 +55,9 @@ return [
         'base_url' => env('QOYOD_BASE_URL', 'https://api.qoyod.com/2.0'),
         'api_key' => env('QOYOD_API_KEY'),
         'default_inventory_id' => env('QOYOD_DEFAULT_INVENTORY_ID'),
-        'default_category_id' => env('QOYOD_DEFAULT_CATEGORY_ID'),
-        'default_tax_id' => (int) env('QOYOD_DEFAULT_TAX_ID', 0),
-        'default_tax_percent' => (float) env('QOYOD_DEFAULT_TAX_PERCENT', 0.0),
+        'default_unit_type_id' => env('QOYOD_DEFAULT_UNIT_TYPE_ID'),
+        'default_tax_id' => (int) env('QOYOD_DEFAULT_TAX_ID', 1), // 1 = 15% VAT
+        'default_tax_percent' => (float) env('QOYOD_DEFAULT_TAX_PERCENT', 15.0),
         'default_sales_account_id' => env('QOYOD_DEFAULT_SALES_ACCOUNT_ID'),
         'timeout' => (int) env('QOYOD_TIMEOUT', 30),
         'retry_attempts' => (int) env('QOYOD_RETRY_ATTEMPTS', 3),

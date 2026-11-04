@@ -24,8 +24,8 @@ class QoyodInvoiceSyncService
         $this->baseUrl = config('services.qoyod.base_url', 'https://api.qoyod.com/2.0');
         $this->apiKey = config('services.qoyod.api_key');
         $this->inventoryId = config('services.qoyod.default_inventory_id');
-        $this->taxId = (int) config('services.qoyod.default_tax_id', 0);
-        $this->taxPercent = (float) config('services.qoyod.default_tax_percent', 0.0);
+        $this->taxId = (int) config('services.qoyod.default_tax_id', 1); // 1 = 15% Standard VAT
+        $this->taxPercent = (float) config('services.qoyod.default_tax_percent', 15.0);
     }
 
     /**
@@ -556,14 +556,14 @@ class QoyodInvoiceSyncService
 
             $quantity = max((float) ($item->quantity ?: 1), 1.0);
             $netUnitPrice = (float) $item->unit_price;
-            $vatRate = (float) config('services.qoyod.default_tax_percent', 0.0);
+            $vatRate = (float) ($item->vat_rate ?: 15.0);
 
             $raw = is_array($item->raw_payload) ? $item->raw_payload : json_decode((string) ($item->raw_payload ?? ''), true);
             $grossUnitPrice = !empty($raw['lineGrossAmount']) ? (float) $raw['lineGrossAmount'] : (!empty($raw['amount']) ? (float) $raw['amount'] : ($netUnitPrice + (float) $item->discount));
             $unitDiscount = !empty($raw['lineTotalDiscount']) ? (float) $raw['lineTotalDiscount'] : (!empty($raw['discount']) ? (float) $raw['discount'] : max(0, $grossUnitPrice - $netUnitPrice));
             $totalLineDiscount = $unitDiscount * $quantity;
 
-            // إرسال السعر الأصلي مع إجمالي الخصم بدقة وبنسبة ضريبة 0%
+            // إرسال السعر الأصلي شامل الضريبة مع إجمالي الخصم بدقة وإبلاغ قيود أن الأسعار شاملة الضريبة (15%)
             $line = [
                 'quantity' => $quantity,
                 'unit_price' => (float) number_format($grossUnitPrice, 2, '.', ''),

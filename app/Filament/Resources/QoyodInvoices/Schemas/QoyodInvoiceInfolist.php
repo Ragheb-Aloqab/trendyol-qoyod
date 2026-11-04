@@ -107,7 +107,7 @@ class QoyodInvoiceInfolist
                             ->formatStateUsing(fn ($state): string => number_format((float) $state, 2) . ' ر.س')
                             ->weight('bold')
                             ->color('success')
-                            ->size(TextEntry\TextEntrySize::Large),
+                            ->size('lg'),
                     ]),
 
                 Section::make('مستند الفاتورة الإلكتروني (PDF)')
@@ -115,7 +115,7 @@ class QoyodInvoiceInfolist
                     ->components([
                         TextEntry::make('pdf_url')
                             ->label('رابط ملف الفاتورة المباشر')
-                            ->formatStateUsing(function (?string $state, QoyodInvoice $record): HtmlString {
+                            ->formatStateUsing(function (?string $state): HtmlString {
                                 if (empty($state)) {
                                     return new HtmlString('<div class="text-sm text-gray-500">لا يتوفر رابط PDF مخزن حالياً. يمكنك استخدام زر "عرض وتحميل ملف PDF" بالأعلى لجلب الرابط فورياً من قيود.</div>');
                                 }

@@ -40,18 +40,29 @@ class ViewQoyodInvoice extends ViewRecord
                 ->label('عرض وتحميل ملف PDF')
                 ->icon('heroicon-o-arrow-down-tray')
                 ->color('success')
-                ->url(function (QoyodInvoice $record) {
-                    if (!empty($record->pdf_url)) {
-                        return $record->pdf_url;
-                    }
+                ->visible(fn (): bool => !empty($this->record->pdf_url))
+                ->url(fn (): ?string => $this->record->pdf_url, shouldOpenInNewTab: true),
+
+            Action::make('fetch_pdf')
+                ->label('جلب ملف PDF من قيود')
+                ->icon('heroicon-o-arrow-down-tray')
+                ->color('success')
+                ->visible(fn (): bool => empty($this->record->pdf_url))
+                ->action(function () {
+                    /** @var QoyodInvoice $record */
+                    $record = $this->record;
                     $service = app(QoyodInvoiceSyncService::class);
                     $freshUrl = $service->fetchInvoicePdfUrl($record->qoyod_invoice_id);
                     if ($freshUrl) {
                         $record->update(['pdf_url' => $freshUrl]);
-                        return $freshUrl;
+                        $this->redirect($freshUrl, navigate: false);
+                    } else {
+                        Notification::make()
+                            ->title('تعذر الحصول على رابط ملف PDF من قيود')
+                            ->warning()
+                            ->send();
                     }
-                    return null;
-                }, shouldOpenInNewTab: true),
+                }),
 
             Action::make('refresh_from_qoyod')
                 ->label('إعادة جلب من قيود الآن')
@@ -62,7 +73,9 @@ class ViewQoyodInvoice extends ViewRecord
                 ->modalDescription('سيتم جلب أحدث تفاصيل الفاتورة والمبالغ ورابط PDF من قيود دون إنشاء أي فاتورة جديدة.')
                 ->modalSubmitActionLabel('تحديث الآن')
                 ->modalCancelActionLabel('إلغاء')
-                ->action(function (QoyodInvoice $record) {
+                ->action(function () {
+                    /** @var QoyodInvoice $record */
+                    $record = $this->record;
                     $service = app(QoyodInvoiceSyncService::class);
                     $updated = $service->fetchAndStoreInvoiceDetails($record->qoyod_invoice_id, $record->order, $record->sync);
 

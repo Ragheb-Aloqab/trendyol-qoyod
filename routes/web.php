@@ -3,13 +3,10 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-// توجيه المسار الرئيسي فوراً إلى لوحة التحكم /admin بمسار نسبي متوافق مع أي منفذ (مثل :9000 أو :80 أو أي نطاق)
-Route::get('/', function (Request $request) {
-    $queryString = $request->getQueryString();
-    $target = '/admin' . ($queryString ? '?' . $queryString : '');
-
-    return response('', 302, ['Location' => $target]);
-});
+// الصفحة الرئيسية للموقع مع روابط الانتقال لتسجيل الدخول ولوحة التحكم
+Route::get('/', function () {
+    return view('welcome');
+})->name('home');
 
 // توجيه المسار العام /login إلى /admin/login بمسار نسبي متوافق مع كافة المنافذ
 Route::get('/login', function (Request $request) {
